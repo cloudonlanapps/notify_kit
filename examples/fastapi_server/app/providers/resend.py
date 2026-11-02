@@ -7,7 +7,7 @@ from app.providers.http_email import HttpEmailProvider
 
 
 class ResendProvider(HttpEmailProvider):
-    """Resend inline transactional email, following club_server's mailer payload."""
+    """Resend transactional email with inline subject and body."""
 
     def endpoint(self) -> str:
         """Use Resend's email sending endpoint."""

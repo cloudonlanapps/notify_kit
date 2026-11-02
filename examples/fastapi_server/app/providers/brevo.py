@@ -5,7 +5,7 @@ from app.providers.http_email import HttpEmailProvider
 
 
 class BrevoProvider(HttpEmailProvider):
-    """Brevo transactional email using club_server's sender/to/content structure."""
+    """Brevo transactional email with sender, recipient and inline content."""
 
     def endpoint(self) -> str:
         """Use Brevo's transactional email endpoint."""
