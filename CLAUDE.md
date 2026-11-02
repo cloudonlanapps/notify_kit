@@ -17,13 +17,13 @@ push, open a PR or merge unless the user authorizes that action.
 Edits to CLAUDE.md, to docs/CONTRIBUTING.md, or to other files under docs/ do
 not require an issue. Commit them directly to main. If you are on a feature
 branch, switch to main, commit, push, then cherry-pick into the feature branch.
-This follows the same rule in club_server's CLAUDE.md and overrides the
-"never push directly to main" line in docs/CONTRIBUTING.md for these files only.
-Pushing still needs the user's confirmation.
+This follows the same rule in club_server's CLAUDE.md and is also recorded in
+docs/CONTRIBUTING.md. Pushing still needs the user's confirmation.
 
 ## Applying the imported conventions
 
-docs/CONTRIBUTING.md was copied unchanged from club_server. This repository is
+docs/CONTRIBUTING.md was copied from club_server, with the process-file
+exception added. This repository is
 cloudonlanapps/notify_kit, a standalone Python package, not that server.
 
 - Use this repository's issues and remotes. The current implementation concerns

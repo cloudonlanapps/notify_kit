@@ -1,12 +1,18 @@
 # Contributing to club_server
 
-This project is **stable**. To keep it that way, all changes must be tracked through GitHub Issues. There are no exceptions — even small fixes get an issue.
+This project is **stable**. To keep it that way, all changes must be tracked through GitHub Issues. The only exception is the process files listed below; even small code fixes get an issue.
 
 ## The golden rule
 
 > **No code change without an issue. No merge without a PR linked to that issue.**
 
-This applies to bugs, features, refactors, docs, dependency bumps, CI tweaks — everything.
+This applies to bugs, features, refactors, dependency bumps, CI tweaks — everything except the process files below.
+
+## Exception for process files
+
+Edits to `CLAUDE.md`, to `docs/CONTRIBUTING.md`, or to other files under `docs/` do not require an issue. Commit them directly to `main`. If you are on a feature branch, switch to `main`, commit, push, then cherry-pick into the feature branch.
+
+Pushing to `main` still needs the user's confirmation when Claude does it.
 
 ---
 
@@ -170,7 +176,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 - **Never `--merge`.** Repo setting now blocks it; the dropdown won't even show the option.
 - **Do not delete the feature branch on merge.** Branches stay on the remote so the PR's commits remain reachable for archaeology.
 - `release` is updated by promoting `main` → `release` on a separate cadence (manual). The same squash-default applies — and matters most here, since this is the path where ancestry-leaks bite hardest.
-- Never push directly to `main`, `beta_release` or `release`
+- Never push directly to `main`, `beta_release` or `release`, except process-file commits to `main` (see [Exception for process files](#exception-for-process-files))
 
 ## 7. Closing issues
 
@@ -199,7 +205,7 @@ Claude:
 
 Conventions Claude must follow on this repo:
 
-1. **Always work from an issue.** If asked to make a change without an issue, Claude should propose creating one first.
+1. **Always work from an issue.** If asked to make a change without an issue, Claude should propose creating one first. Process-file edits (`CLAUDE.md`, `docs/`) are the exception and go directly to `main`.
 2. **Always branch from `main`.** Never `release`.
 3. **Never push, open PRs, or merge without explicit user confirmation.**
 4. **Always link PRs to their issue** with `Fixes #N` in the PR body.
