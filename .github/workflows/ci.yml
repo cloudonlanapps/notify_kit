@@ -1,0 +1,43 @@
+name: checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --locked
+      - run: uv run ruff format --check src tests tests_postgres scripts examples/fastapi_server/app examples/fastapi_server/alembic
+      - run: uv run ruff check src tests tests_postgres scripts examples/fastapi_server/app examples/fastapi_server/alembic
+      - run: uv run basedpyright --level error
+      - run: uv run pytest --cov=notify_kit --cov-report=term-missing --cov-fail-under=90
+      - run: uv build --offline --no-build-isolation
+      - run: uv run twine check --strict dist/*
+      - run: uv run python scripts/check_distribution.py
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      NOTIFY_KIT_TEST_POSTGRES_URL: postgresql+asyncpg://postgres:test-only@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked --extra postgres
+      - run: uv run --extra postgres pytest tests_postgres --allow-hosts=127.0.0.1
