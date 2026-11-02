@@ -19,7 +19,9 @@ from notify_kit.models.template_operation import TemplateOperation
 
 
 @pytest.mark.requirement("R41")
-async def test_should_fence_an_old_worker_after_lease_recovery(kit, monkeypatch):
+async def test_should_fence_old_worker_when_lease_is_recovered(
+    kit, monkeypatch, storage
+):
     notifier, provider, _ = kit
     clock = [time.time()]
     monkeypatch.setattr(time, "time", lambda: clock[0])
@@ -30,19 +32,19 @@ async def test_should_fence_an_old_worker_after_lease_recovery(kit, monkeypatch)
         facts={},
         idempotency_key="fence",
     )
-    old = await notifier._storage.deliveries.claim({"primary"}, lease_seconds=1)
+    old = await storage.deliveries.claim({"primary"}, lease_seconds=1)
     clock[0] += 2
-    new = await notifier._storage.deliveries.claim({"primary"}, lease_seconds=1)
+    new = await storage.deliveries.claim({"primary"}, lease_seconds=1)
     assert old.lease_token != new.lease_token
     assert new.reconcile
-    assert not await notifier._storage.deliveries.finish(
+    assert not await storage.deliveries.finish(
         old,
         status=DeliveryState.DELIVERED,
         result=ProviderResult(ProviderState.DELIVERED),
         next_attempt_at=None,
         terminal=True,
     )
-    assert await notifier._storage.deliveries.finish(
+    assert await storage.deliveries.finish(
         new,
         status=DeliveryState.DELIVERED,
         result=ProviderResult(ProviderState.DELIVERED),
@@ -53,15 +55,13 @@ async def test_should_fence_an_old_worker_after_lease_recovery(kit, monkeypatch)
 
 
 @pytest.mark.requirement("R40")
-async def test_should_bound_slow_provider_and_preserve_uncertain_outcome(kit):
+async def test_should_preserve_uncertain_outcome_when_slow_provider_times_out(kit):
     _, provider, path = kit
     provider.delay = 10
     notifier = Notifier(
         storage=SQLiteStorage(path),
         providers={"primary": provider},
-        worker_policy=WorkerPolicy(
-            operation_timeout_seconds=0.01, lease_seconds=1, time_budget_seconds=0.1
-        ),
+        worker_policy=WorkerPolicy(operation_timeout_seconds=0.01, lease_seconds=1),
     )
     try:
         receipt = await notifier.send(
@@ -81,7 +81,7 @@ async def test_should_bound_slow_provider_and_preserve_uncertain_outcome(kit):
 
 
 @pytest.mark.requirement("R36")
-async def test_should_end_uncertain_work_at_maximum_age_without_another_send(
+async def test_should_end_uncertain_work_without_sending_when_maximum_age_is_reached(
     kit, monkeypatch
 ):
     _, provider, path = kit
@@ -115,7 +115,7 @@ async def test_should_end_uncertain_work_at_maximum_age_without_another_send(
 
 
 @pytest.mark.requirement("R43")
-async def test_should_report_callback_exhaustion_without_exposing_exception_or_resending(
+async def test_should_report_safe_callback_exhaustion_when_handler_keeps_failing(
     kit, monkeypatch
 ):
     _, provider, path = kit
@@ -152,7 +152,7 @@ async def test_should_report_callback_exhaustion_without_exposing_exception_or_r
 
 
 @pytest.mark.requirement("R9")
-async def test_should_report_missing_provider_after_restart_without_losing_job(kit):
+async def test_should_preserve_job_when_provider_is_missing_after_restart(kit):
     notifier, _, path = kit
     receipt = await notifier.send(
         provider="primary",
@@ -172,11 +172,12 @@ async def test_should_report_missing_provider_after_restart_without_losing_job(k
 
 
 @pytest.mark.requirement("R17")
-async def test_should_recover_interrupted_template_operation_only_after_explicit_confirmation(
+async def test_should_recover_interrupted_template_operation_when_operator_confirms_owner_stopped(
     kit,
+    storage,
 ):
     notifier, _, _ = kit
-    await notifier._storage.links.begin(await notifier.templates.get("receipt"))
+    await storage.links.begin(await notifier.templates.get("receipt"))
     with pytest.raises(NotifierError) as error:
         await notifier.template_recover(
             provider="primary",
@@ -198,7 +199,7 @@ async def test_should_recover_interrupted_template_operation_only_after_explicit
 
 
 @pytest.mark.requirement("R13")
-async def test_should_hide_unexpected_provider_exception_per_recipient(kit):
+async def test_should_hide_exception_details_when_provider_fails_unexpectedly(kit):
     notifier, provider, _ = kit
     provider.outcomes["alice"] = RuntimeError("SECRET-provider-key")
     await notifier.send(
@@ -217,7 +218,7 @@ async def test_should_hide_unexpected_provider_exception_per_recipient(kit):
 
 
 @pytest.mark.requirement("R32")
-async def test_should_isolate_malformed_provider_result_in_batch(kit):
+async def test_should_isolate_recipient_when_provider_returns_malformed_result(kit):
     notifier, provider, _ = kit
     provider.outcomes["alice"] = None
     receipt = await notifier.send(

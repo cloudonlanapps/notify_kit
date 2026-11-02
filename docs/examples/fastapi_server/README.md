@@ -20,8 +20,9 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Open [Swagger UI](http://127.0.0.1:8000/docs) or
-[OpenAPI JSON](http://127.0.0.1:8000/openapi.json). No scheduler is started; invoke
-POST /v1/worker/run-once explicitly to process jobs. The SQLite file
+[OpenAPI JSON](http://127.0.0.1:8000/openapi.json). The lifespan starts notifier.run_forever() automatically and waits for it during
+shutdown. POST /v1/worker/run-once is also available for manual processing.
+Pass start_worker=False to create_app for scheduler-driven integration or tests. The SQLite file
 example_notifications.db is relative to the working directory. Restarting with
 the same file preserves templates, registrations and delivery status.
 
@@ -69,7 +70,7 @@ curl -sS http://127.0.0.1:8000/v1/notifications \
 ```
 
 Copy the returned batch_id and individual delivery IDs. Before worker execution,
-statuses are queued. Repeating the same request/key returns the same IDs; changing
+statuses initially are queued, then the background worker processes them. Repeating the same request/key returns the same IDs; changing
 inputs with that key produces a conflict. All recipients share the supplied facts. Console placeholders also include username, name, email and phone. Non-null recipient fields override shared facts. The two entries above are both delivered; there is no recipient deduplication.
 
 ```bash
@@ -130,7 +131,7 @@ structured code/detail responses. Request schema validation returns HTTP 422.
 The example exposes preview, completion queries, acknowledgement and explicit
 interrupted-template recovery. Worker invocations handle due sends/status checks,
 completion callbacks and bounded cleanup. create_app accepts retry_policy,
-worker_policy, retention_policy and completion_handler constructor arguments.
+worker_policy, retention_policy, completion_handler and start_worker constructor arguments.
 
 Offline HTTP/provider tests live in the root tests/ directory. No real messages
 are sent by automated tests. Acceptance-only email adapters produce terminal
@@ -155,7 +156,7 @@ use the explicit confirmed-owner-stopped recovery API before repeating the same 
 ## Migration setup
 
 This project has an application-owned alembic.ini and alembic/env.py. Its versions/
-contains the empty app_0001 baseline; the kit supplies nk_0001 followed by nk_0002 on the independent
+contains the empty app_0001 baseline; the kit supplies nk_0001, nk_0002 and nk_0003 on the independent
 notify_kit branch. Both share alembic_version. Run from this example directory:
 
 ```bash

@@ -30,7 +30,7 @@ def mock_transport(monkeypatch, handler):
 
 
 @pytest.mark.requirement("R19")
-async def test_should_send_vendor_payload_with_stable_id_and_personalized_content(
+async def test_should_send_personalized_vendor_payload_when_email_delivery_is_requested(
     email_provider, monkeypatch
 ):
     recipient = Recipient("alice", "Alice", "alice@example.com")
@@ -74,7 +74,7 @@ async def test_should_send_vendor_payload_with_stable_id_and_personalized_conten
 
 
 @pytest.mark.requirement("R23")
-async def test_should_escape_html_facts_without_interpreting_markup(email_provider):
+async def test_should_escape_html_facts_when_facts_contain_markup(email_provider):
     prepared = await email_provider.prepare(
         template=Template(
             "literal", {"subject": "$value", "text": "$value", "html": "<p>$value</p>"}
@@ -92,7 +92,7 @@ async def test_should_escape_html_facts_without_interpreting_markup(email_provid
 
 
 @pytest.mark.requirement("R24")
-async def test_should_generate_safe_html_without_requiring_a_logo_or_layout(
+async def test_should_generate_safe_html_when_template_has_no_logo_or_layout(
     email_provider,
 ):
     prepared = await email_provider.prepare(
@@ -106,7 +106,9 @@ async def test_should_generate_safe_html_without_requiring_a_logo_or_layout(
 
 
 @pytest.mark.requirement("R25")
-async def test_should_name_missing_fact_and_reject_subject_newline(email_provider):
+async def test_should_reject_email_content_when_fact_is_missing_or_subject_has_newline(
+    email_provider,
+):
     with pytest.raises(ProviderError, match="Missing fact: amount"):
         await email_provider.prepare(
             template=Template("missing", {"subject": "hello", "text": "$amount"}),
@@ -124,7 +126,7 @@ async def test_should_name_missing_fact_and_reject_subject_newline(email_provide
 
 
 @pytest.mark.requirement("R26")
-async def test_should_ignore_unused_facts(email_provider):
+async def test_should_ignore_extra_facts_when_preparing_email(email_provider):
     prepared = await email_provider.prepare(
         template=Template("simple", {"subject": "hello", "text": "body"}),
         metadata=None,
@@ -135,7 +137,9 @@ async def test_should_ignore_unused_facts(email_provider):
 
 
 @pytest.mark.requirement("R18")
-async def test_should_validate_definition_during_registration(email_provider):
+async def test_should_validate_definition_when_email_template_is_registered(
+    email_provider,
+):
     with pytest.raises(ProviderError):
         await email_provider.register_template(
             template=Template("bad", {"text": "missing subject"}),
@@ -158,7 +162,7 @@ async def test_should_validate_definition_during_registration(email_provider):
         (500, ProviderState.UNKNOWN),
     ],
 )
-async def test_should_classify_safe_vendor_diagnostics(
+async def test_should_classify_safe_diagnostics_when_vendor_returns_error(
     email_provider, monkeypatch, status, state
 ):
     mock_transport(
@@ -195,7 +199,7 @@ async def test_should_classify_safe_vendor_diagnostics(
         (httpx.ReadTimeout, ProviderState.UNKNOWN),
     ],
 )
-async def test_should_not_blindly_retry_uncertain_transport_failures(
+async def test_should_avoid_blind_retry_when_transport_failure_is_uncertain(
     email_provider, monkeypatch, exception, state
 ):
     def handler(request):
@@ -218,7 +222,7 @@ async def test_should_not_blindly_retry_uncertain_transport_failures(
 
 
 @pytest.mark.requirement("R7")
-async def test_should_preserve_per_instance_sender_identity():
+async def test_should_preserve_sender_identity_when_provider_instances_differ():
     first = ResendProvider(
         EmailSettings(api_key="first-key", from_email="first@example.com")
     )
@@ -238,7 +242,7 @@ async def test_should_preserve_per_instance_sender_identity():
 
 
 @pytest.mark.requirement("R20")
-async def test_should_require_fake_sms_registration_and_support_revision_lifecycle(
+async def test_should_enforce_registration_and_revisions_when_fake_sms_template_is_used(
     caplog,
 ):
     provider = FakeSmsProvider()
@@ -278,7 +282,7 @@ async def test_should_require_fake_sms_registration_and_support_revision_lifecyc
 
 
 @pytest.mark.requirement("R22")
-async def test_should_prepare_subject_and_alternative_bodies_before_sending(
+async def test_should_prepare_subject_and_alternative_bodies_when_email_is_submitted(
     email_provider,
 ):
     prepared = await email_provider.prepare(

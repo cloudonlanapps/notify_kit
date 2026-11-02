@@ -4,7 +4,7 @@ from notify_kit import DeliveryState, ErrorCode, NotifierError, Recipient
 
 
 @pytest.mark.requirement("R15")
-async def test_should_roundtrip_crud_and_increment_revision(kit):
+async def test_should_increment_revision_when_template_crud_is_performed(kit):
     notifier, _, _ = kit
     created = await notifier.templates.create(
         label="second", definition={"title": "hello"}
@@ -24,7 +24,9 @@ async def test_should_roundtrip_crud_and_increment_revision(kit):
 
 @pytest.mark.requirement("R17")
 @pytest.mark.parametrize("operation", ["create", "update", "delete"])
-async def test_should_reject_duplicate_or_missing_template_operations(kit, operation):
+async def test_should_reject_operation_when_template_is_duplicate_or_missing(
+    kit, operation
+):
     notifier, _, _ = kit
     with pytest.raises(NotifierError) as error:
         if operation == "create":
@@ -39,7 +41,9 @@ async def test_should_reject_duplicate_or_missing_template_operations(kit, opera
 
 
 @pytest.mark.requirement("R16")
-async def test_should_link_multiple_templates_to_one_provider(kit):
+async def test_should_keep_separate_links_when_registering_multiple_templates_to_one_provider(
+    kit,
+):
     notifier, provider, _ = kit
     await notifier.templates.create(label="other", definition={})
     assert (
@@ -52,7 +56,9 @@ async def test_should_link_multiple_templates_to_one_provider(kit):
 
 
 @pytest.mark.requirement("R20")
-async def test_should_preserve_provider_managed_identifiers_and_ordered_parameters(kit):
+async def test_should_preserve_identifiers_and_parameter_order_when_provider_prepares_template(
+    kit,
+):
     notifier, provider, _ = kit
     definition = {
         "approved_id": "external-123",
@@ -72,7 +78,7 @@ async def test_should_preserve_provider_managed_identifiers_and_ordered_paramete
 
 
 @pytest.mark.requirement("R27")
-async def test_should_select_exact_label_without_language_fallback(kit):
+async def test_should_select_exact_label_when_language_variants_exist(kit):
     notifier, _, _ = kit
     with pytest.raises(NotifierError) as error:
         await notifier.preview(
@@ -85,7 +91,7 @@ async def test_should_select_exact_label_without_language_fallback(kit):
 
 
 @pytest.mark.requirement("R9")
-async def test_should_skip_check_without_link_but_check_empty_metadata(kit):
+async def test_should_check_template_when_link_metadata_is_empty(kit):
     notifier, provider, _ = kit
     assert (
         await notifier.template_status(provider="primary", template="receipt") is None
@@ -102,7 +108,7 @@ async def test_should_skip_check_without_link_but_check_empty_metadata(kit):
 
 
 @pytest.mark.requirement("R17")
-async def test_should_block_stale_link_until_explicit_provider_update(kit):
+async def test_should_block_stale_link_when_local_definition_has_changed(kit):
     notifier, _, _ = kit
     await notifier.template_register(provider="primary", template="receipt")
     await notifier.templates.update(label="receipt", definition={"body": "new"})
@@ -128,7 +134,7 @@ async def test_should_block_stale_link_until_explicit_provider_update(kit):
 
 
 @pytest.mark.requirement("R17")
-async def test_should_keep_link_on_failed_unregister_and_block_local_delete(kit):
+async def test_should_keep_link_and_block_delete_when_provider_unregister_fails(kit):
     notifier, provider, _ = kit
     await notifier.template_register(provider="primary", template="receipt")
     provider.fail_unregister = True
@@ -148,8 +154,8 @@ async def test_should_keep_link_on_failed_unregister_and_block_local_delete(kit)
     assert await notifier.templates.list() == ()
 
 
-@pytest.mark.requirement("R32")
-async def test_should_prevent_template_mutation_while_snapshot_is_pending(kit):
+@pytest.mark.requirement("R17")
+async def test_should_prevent_template_mutation_when_snapshot_is_pending(kit):
     notifier, _, _ = kit
     await notifier.send(
         provider="primary",
@@ -168,7 +174,7 @@ async def test_should_prevent_template_mutation_while_snapshot_is_pending(kit):
 
 
 @pytest.mark.requirement("R17")
-async def test_should_use_new_operation_key_after_unregister_and_reregister(
+async def test_should_use_new_operation_key_when_template_is_unregistered_and_registered_again(
     kit, monkeypatch
 ):
     notifier, provider, _ = kit

@@ -47,25 +47,28 @@ class CompletionStore:
 
     async def claim(
         self, *, lease_seconds: float, policy: RetentionPolicy
-    ) -> tuple[CompletionStatus, str] | None:
-        """Claim one due event or expired handler lease; keep its stable event ID."""
+    ) -> tuple[CompletionStatus, str | None] | None:
+        """Claim due work; a failed event with no token means exhaustion, not an empty queue."""
         now = time.time()
-        async with self._database.session(write=True) as session:
-            statement = (
-                select(CompletionRecord)
-                .where(
-                    or_(
-                        (CompletionRecord.status == CompletionState.PENDING)
-                        & (CompletionRecord.next_attempt_at <= now),
-                        (CompletionRecord.status == CompletionState.PROCESSING)
-                        & (CompletionRecord.lease_expires_at <= now),
-                    ),
-                )
-                .order_by(CompletionRecord.created_at)
-                .limit(1)
+        statement = (
+            select(CompletionRecord)
+            .where(
+                or_(
+                    (CompletionRecord.status == CompletionState.PENDING)
+                    & (CompletionRecord.next_attempt_at <= now),
+                    (CompletionRecord.status == CompletionState.PROCESSING)
+                    & (CompletionRecord.lease_expires_at <= now),
+                ),
             )
-            if not self._database.is_sqlite:
-                statement = statement.with_for_update(skip_locked=True)
+            .order_by(CompletionRecord.created_at)
+            .limit(1)
+        )
+        async with self._database.session() as session:
+            if not await session.scalar(select(statement.exists())):
+                return None
+        if not self._database.is_sqlite:
+            statement = statement.with_for_update(skip_locked=True)
+        async with self._database.session(write=True) as session:
             row = await session.scalar(statement)
             if row is None:
                 return None
@@ -80,7 +83,7 @@ class CompletionStore:
                 )
                 row.lease_token = None
                 row.lease_expires_at = None
-                return None
+                return self._status(row), None
             row.status = CompletionState.PROCESSING
             row.attempts += 1
             token = uuid4().hex
@@ -124,60 +127,72 @@ class CompletionStore:
     ) -> None:
         """Expire terminal records only after event handling stops; keep active jobs."""
         now = time.time()
-        async with self._database.session(write=True) as session:
-            pending = await session.scalars(
-                select(CompletionRecord)
-                .where(
-                    CompletionRecord.status == CompletionState.PENDING,
-                    CompletionRecord.created_at + policy.callback_deadline_seconds
-                    <= now,
-                )
-                .limit(max_records)
+        expired_events = (
+            select(CompletionRecord)
+            .where(
+                CompletionRecord.status == CompletionState.PENDING,
+                CompletionRecord.created_at + policy.callback_deadline_seconds <= now,
             )
-            for event in pending:
+            .limit(max_records)
+        )
+        eligible_deliveries = (
+            select(DeliveryRecord, CompletionRecord)
+            .join(CompletionRecord, CompletionRecord.delivery_id == DeliveryRecord.id)
+            .where(
+                DeliveryRecord.terminal.is_(True),
+                CompletionRecord.status.in_(
+                    (CompletionState.HANDLED, CompletionState.FAILED)
+                ),
+                or_(
+                    DeliveryRecord.content_cleared.is_(False),
+                    DeliveryRecord.acknowledged_at <= now - policy.acknowledged_seconds,
+                    DeliveryRecord.acknowledged_at.is_(None)
+                    & (
+                        DeliveryRecord.completed_at
+                        <= now - policy.unacknowledged_seconds
+                    ),
+                ),
+            )
+            .order_by(DeliveryRecord.completed_at)
+            .limit(max_records)
+        )
+        empty_batches = (
+            select(BatchRecord.id)
+            .where(
+                ~select(DeliveryRecord.id)
+                .where(DeliveryRecord.batch_id == BatchRecord.id)
+                .exists(),
+                or_(
+                    BatchRecord.recipient_count > 0,
+                    BatchRecord.created_at <= now - policy.unacknowledged_seconds,
+                ),
+            )
+            .order_by(BatchRecord.created_at)
+            .limit(max_records)
+        )
+        async with self._database.session() as session:
+            has_work = await session.scalar(
+                select(
+                    or_(
+                        expired_events.exists(),
+                        eligible_deliveries.exists(),
+                        empty_batches.exists(),
+                    )
+                )
+            )
+            if not has_work:
+                return
+        async with self._database.session(write=True) as session:
+            for event in await session.scalars(expired_events):
                 event.status, event.next_attempt_at, event.reason = (
                     CompletionState.FAILED,
                     None,
                     "Completion handling deadline expired",
                 )
             await session.flush()
-            rows = await session.scalars(
-                select(DeliveryRecord)
-                .join(
-                    CompletionRecord,
-                    CompletionRecord.delivery_id == DeliveryRecord.id,
-                )
-                .where(
-                    DeliveryRecord.terminal.is_(True),
-                    CompletionRecord.status.in_(
-                        (CompletionState.HANDLED, CompletionState.FAILED)
-                    ),
-                    or_(
-                        DeliveryRecord.content_cleared.is_(False),
-                        DeliveryRecord.acknowledged_at
-                        <= now - policy.acknowledged_seconds,
-                        DeliveryRecord.acknowledged_at.is_(None)
-                        & (
-                            DeliveryRecord.completed_at
-                            <= now - policy.unacknowledged_seconds
-                        ),
-                    ),
-                )
-                .order_by(DeliveryRecord.completed_at)
-                .limit(max_records)
-            )
-            for row in rows:
-                event = await session.scalar(
-                    select(CompletionRecord).where(
-                        CompletionRecord.delivery_id == row.id
-                    )
-                )
-                if event is None or event.status not in (
-                    CompletionState.HANDLED,
-                    CompletionState.FAILED,
-                ):
-                    continue
-                # Once callbacks stop, remove prepared contents even while retaining status.
+            rows = await session.execute(eligible_deliveries)
+            for row, event in rows:
+                # Prepared content is no longer needed once callbacks stop.
                 row.prepared = {}
                 row.content_cleared = True
                 base = (
@@ -195,11 +210,6 @@ class CompletionStore:
                     await session.flush()
                     await session.delete(row)
             await session.flush()
-            # Idempotency and facts have the same lifetime as the batch's delivery records.
             await session.execute(
-                delete(BatchRecord).where(
-                    ~select(DeliveryRecord.id)
-                    .where(DeliveryRecord.batch_id == BatchRecord.id)
-                    .exists()
-                )
+                delete(BatchRecord).where(BatchRecord.id.in_(empty_batches))
             )

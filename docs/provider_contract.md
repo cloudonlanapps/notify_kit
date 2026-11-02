@@ -49,11 +49,15 @@ or unknown outcomes. This avoids invalidating a prepared external reference.
 Use a new template label if an existing one remains in use.
 
 The lifecycle gate persists across network calls; provider calls do not hold a
-SQL transaction. Submission rechecks revision/linkage while committing jobs to
+SQL transaction. Submission rechecks the template revision and kit-owned link generation while committing jobs to
 close preparation races. A process killed during lifecycle mutation can leave
 operation_token set. Use template_recover with the same operation only after
 confirming its original owner stopped. The provider must reconcile the repeated
 operation key; recovery is an explicit operator action, not concurrent takeover.
+Operation identities are tracked independently per template/provider, even when
+the link is absent. Status refreshes do not change link generations or recovery keys.
+Preview checks availability using refreshed metadata but does not save it; send and
+explicit status refresh persist metadata with generation guards.
 
 Provider register/update/delete must reconcile repeated operation keys. A remote
 change and the kit's SQLite/PostgreSQL commit are not one atomic transaction.

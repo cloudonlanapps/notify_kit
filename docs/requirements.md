@@ -58,7 +58,7 @@ rules. Runtime coverage and migration/schema tests complement these markers.
 
 - **R38** [✅] The CLI can submit and process jobs using an explicitly supplied application provider factory and database URL, returning JSON results/errors.
 - **R39** [✅] The CLI can preview provider-specific prepared content without delivery.
-- **R40** [✅] Application scheduling invokes bounded batches/time budgets. Provider operations have timeouts; retries/status checks persist due times rather than sleeping.
+- **R40** [✅] The application starts run_forever() or schedules bounded run_once() batches. Provider operations have timeouts; retries/status checks persist due times rather than sleeping.
 - **R41** [✅] Database claims and lease tokens prevent concurrent ownership/stale writes. Expired send leases reconcile instead of blindly resending. Exactly-once external effects are not promised.
 - **R42** [✅] Terminal success/failure and a stable completion event commit atomically, including preparation failures. Callback retries never redeliver the notification.
 - **R43** [✅] Completion handling is at least once, with stable IDs, leases, bounded retries/deadlines and queryable exhaustion. Handlers are supplied again after restart.
@@ -71,7 +71,7 @@ rules. Runtime coverage and migration/schema tests complement these markers.
 All policies are constructor arguments to Notifier. Defaults: five send attempts,
 60-second initial exponential backoff capped at one hour, a 24-hour maximum job
 age, 60-second polling, 30-second operation timeout, 60-second leases, and a
-10-second worker budget. Callback defaults are five attempts, 60-second retry and
+continuous worker with no overall time budget. Callback defaults are five attempts, 60-second retry and
 a 24-hour deadline. Retain acknowledged results for 24 hours and unacknowledged
 results for 30 days. Policy values are validated and may be overridden per notifier.
 

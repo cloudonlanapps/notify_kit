@@ -2,7 +2,7 @@
 
 A Python >=3.12 notification package with application-owned providers, stored
 templates and persistent per-recipient delivery jobs. The application selects
-providers and schedules worker invocations. Provider integrations are supplied by the application; the included FastAPI
+providers and starts a continuous worker or schedules worker invocations. Provider integrations are supplied by the application; the included FastAPI
 example demonstrates console, fake SMS, Brevo and Resend adapters.
 
 Start with the [usage guide](usage.md) for the application integration workflow.

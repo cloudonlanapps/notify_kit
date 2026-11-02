@@ -51,7 +51,10 @@ def _object(raw: str) -> Payload:
     return cast(Payload, value)
 
 
-def _recipient(value: Payload) -> Recipient:
+def _recipient(value: object) -> Recipient:
+    if not isinstance(value, dict):
+        raise ValueError("Recipient must be a JSON object")
+    value = cast(Payload, value)
     username = value.get("username")
     if not isinstance(username, str):
         raise ValueError("Recipient username is required")
@@ -97,6 +100,11 @@ def _parser() -> argparse.ArgumentParser:
 
 
 async def _run(args: argparse.Namespace) -> object:
+    if args.command in ("send", "preview", "worker") and not args.factory:
+        raise NotifierError(
+            ErrorCode.INVALID_REQUEST,
+            "--factory is required for send, preview and worker",
+        )
     storage = DatabaseStorage(url=args.database_url)
     try:
         notifier = Notifier(storage=storage, providers=_providers(args.factory))
@@ -105,10 +113,7 @@ async def _run(args: argparse.Namespace) -> object:
             values: object = json.loads(args.recipients)
             if not isinstance(values, list):
                 raise ValueError("Recipients must be a JSON array")
-            recipients = [
-                _recipient(_object(json.dumps(value)))
-                for value in cast(list[object], values)
-            ]
+            recipients = [_recipient(value) for value in cast(list[object], values)]
             receipt = await notifier.send(
                 provider=args.provider,
                 template=args.template,

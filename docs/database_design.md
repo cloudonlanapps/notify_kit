@@ -79,4 +79,13 @@ races and competing workers. The worker persists fenced leases, per-recipient
 terminal state and an independent completion outbox. Prepared content is cleared
 after callbacks stop; configured retention removes status and batch records later.
 The initial nk_0001 revision remains immutable; nk_0002 upgrades existing versioned
-data to the worker/outbox schema. See docs/testing.md for validation commands.
+data to the worker/outbox schema. This unreleased PR corrects nk_0002 so historical
+terminal completions are backfilled as handled rather than replayed. Once released,
+those revisions remain immutable. nk_0003 adds provider-specific operation identities,
+link generation tokens and timestamps/indexing for empty-batch retention. Applications
+must run upgrade heads before using this package revision.
+
+Kit-owned link generations guard lifecycle changes without comparing opaque
+status metadata. Generation rows survive unregister so recovery keys for another
+provider remain unchanged. Empty batches retain their idempotency receipt for the
+configured unacknowledged retention period. See docs/testing.md for validation commands.

@@ -28,6 +28,7 @@ with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()
     assert "notify_kit/py.typed" in names
     assert "notify_kit/migrations/versions/nk_0002_worker_lifecycle.py" in names
+    assert "notify_kit/migrations/versions/nk_0003_provider_generations.py" in names
     assert not any(name.endswith((".db", ".env")) for name in names)
 
 with tempfile.TemporaryDirectory(prefix="notify-kit-wheel-") as temporary:

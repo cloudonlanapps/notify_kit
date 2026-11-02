@@ -9,14 +9,16 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from notify_kit import ErrorCode, NotifierError, SQLiteStorage
+from notify_kit import ErrorCode, Notifier, NotifierError, SQLiteStorage
 from notify_kit.db.schema import metadata
 from notify_kit.migrations.constants import SCHEMA_REVISION
 from tests.conftest import ROOT, migrate
 
 
 @pytest.mark.requirement("R4")
-async def test_should_match_orm_schema_after_app_and_kit_migrations(migrated_path):
+async def test_should_match_orm_schema_when_app_and_kit_migrations_finish(
+    migrated_path,
+):
     engine = create_async_engine(f"sqlite+aiosqlite:///{migrated_path}")
 
     def compare(connection):
@@ -32,7 +34,9 @@ async def test_should_match_orm_schema_after_app_and_kit_migrations(migrated_pat
 
 
 @pytest.mark.requirement("R37")
-async def test_should_preserve_existing_jobs_and_backfill_events_on_upgrade(tmp_path):
+async def test_should_preserve_jobs_and_mark_historical_events_handled_when_upgrading(
+    tmp_path,
+):
     path = tmp_path / "old.db"
     await migrate(path, "nk_0001")
     engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
@@ -60,13 +64,13 @@ async def test_should_preserve_existing_jobs_and_backfill_events_on_upgrade(tmp_
                 await connection.execute(
                     text("SELECT delivery_id,status FROM notify_kit_completions")
                 )
-            ).one() == ("d", "pending")
+            ).one() == ("d", "handled")
     finally:
         await engine.dispose()
 
 
 @pytest.mark.requirement("R4")
-def test_should_resolve_packaged_revision_branch_and_compile_postgres_sql():
+def test_should_resolve_packaged_head_when_compiling_postgres_migrations():
     config = Config(
         str(ROOT / "examples/fastapi_server/alembic.ini"), output_buffer=StringIO()
     )
@@ -83,7 +87,7 @@ def test_should_resolve_packaged_revision_branch_and_compile_postgres_sql():
 
 
 @pytest.mark.requirement("R2")
-async def test_should_reject_unmigrated_database_without_creating_tables(tmp_path):
+async def test_should_leave_tables_absent_when_rejecting_unmigrated_database(tmp_path):
     path = tmp_path / "empty.db"
     storage = SQLiteStorage(path)
     try:
@@ -104,7 +108,9 @@ async def test_should_reject_unmigrated_database_without_creating_tables(tmp_pat
 
 
 @pytest.mark.requirement("R4")
-async def test_should_keep_kit_changes_out_of_application_autogenerate(migrated_path):
+async def test_should_exclude_kit_changes_when_application_autogenerates_migrations(
+    migrated_path,
+):
     from sqlalchemy import Column, MetaData, Table, Text
 
     from notify_kit.migrations.integration import exclude_kit_names, exclude_kit_objects
@@ -137,7 +143,7 @@ async def test_should_keep_kit_changes_out_of_application_autogenerate(migrated_
 
 
 @pytest.mark.requirement("R37")
-async def test_should_downgrade_and_upgrade_worker_schema_without_dropping_deliveries(
+async def test_should_preserve_deliveries_when_worker_schema_is_downgraded_and_upgraded(
     kit,
 ):
     notifier, _, path = kit
@@ -151,7 +157,6 @@ async def test_should_downgrade_and_upgrade_worker_schema_without_dropping_deliv
         idempotency_key="roundtrip",
     )
     await notifier.run_once()
-    await notifier.aclose()
     engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
 
     def downgrade(connection):
@@ -169,4 +174,9 @@ async def test_should_downgrade_and_upgrade_worker_schema_without_dropping_deliv
     finally:
         await engine.dispose()
     await migrate(path)
-    assert (await notifier.get_status(receipt.deliveries[0].id)).status == "delivered"
+    fresh = Notifier(storage=SQLiteStorage(path), providers={})
+    try:
+        await fresh.initialize()
+        assert (await fresh.get_status(receipt.deliveries[0].id)).status == "delivered"
+    finally:
+        await fresh.aclose()

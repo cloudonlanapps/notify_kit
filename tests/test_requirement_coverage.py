@@ -3,7 +3,7 @@ import re
 from tests.conftest import ROOT
 
 
-def test_should_have_dedicated_marked_tests_for_every_completed_requirement(request):
+def test_should_find_dedicated_evidence_when_requirement_is_marked_complete(request):
     document = (ROOT / "docs/requirements.md").read_text()
     rules = dict(re.findall(r"\*\*(R\d+)\*\* \[([^\]]+)\]", document))
     evidence = set()

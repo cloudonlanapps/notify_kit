@@ -1,3 +1,5 @@
+import json
+from typing import cast
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -31,6 +33,7 @@ class TemplateStore:
             raise NotifierError(
                 ErrorCode.INVALID_REQUEST, "Template label must not be empty"
             )
+        definition = self._validate_definition(definition)
         try:
             async with self._database.session(write=True) as session:
                 row = TemplateRecord(
@@ -47,6 +50,20 @@ class TemplateStore:
                 ErrorCode.ALREADY_EXISTS, f"Template already exists: {label}"
             ) from None
         return result
+
+    @staticmethod
+    def _validate_definition(value: object) -> Payload:
+        if not isinstance(value, dict):
+            raise NotifierError(
+                ErrorCode.INVALID_REQUEST, "Template definition must be an object"
+            )
+        try:
+            return cast(Payload, json.loads(json.dumps(value, allow_nan=False)))
+        except (TypeError, ValueError):
+            raise NotifierError(
+                ErrorCode.INVALID_REQUEST,
+                "Template definition must be JSON serializable",
+            ) from None
 
     @staticmethod
     def _template(row: TemplateRecord) -> Template:
@@ -70,6 +87,7 @@ class TemplateStore:
 
     async def update(self, *, label: str, definition: Payload) -> Template:
         """Edit an idle definition; linked provider revisions must be updated explicitly."""
+        definition = self._validate_definition(definition)
         async with self._database.session(write=True) as session:
             row = await locked_template(session, label)
             require_idle(row)

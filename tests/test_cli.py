@@ -28,7 +28,7 @@ async def cli(path, *arguments):
 
 
 @pytest.mark.requirement("R38")
-async def test_should_submit_and_process_through_cli_without_network(kit):
+async def test_should_submit_and_process_without_network_when_cli_is_used(kit):
     notifier, _, path = kit
     result = await cli(
         path,
@@ -54,7 +54,7 @@ async def test_should_submit_and_process_through_cli_without_network(kit):
 
 
 @pytest.mark.requirement("R39")
-async def test_should_preview_through_cli_without_creating_delivery(kit):
+async def test_should_avoid_creating_delivery_when_cli_preview_is_requested(kit):
     _, _, path = kit
     result = await cli(
         path,
@@ -73,7 +73,7 @@ async def test_should_preview_through_cli_without_creating_delivery(kit):
 
 
 @pytest.mark.requirement("R38")
-async def test_should_return_structured_cli_error_for_missing_provider(kit):
+async def test_should_return_structured_cli_error_when_provider_is_missing(kit):
     _, _, path = kit
     result = await cli(
         path,
@@ -91,3 +91,27 @@ async def test_should_return_structured_cli_error_for_missing_provider(kit):
     )
     assert result.returncode != 0
     assert json.loads(result.stderr)["code"] == "provider_not_registered"
+
+
+@pytest.mark.requirement("R38")
+async def test_should_leave_jobs_unchanged_when_worker_cli_has_no_factory(kit):
+    notifier, _, path = kit
+    from notify_kit import Recipient
+
+    receipt = await notifier.send(
+        provider="primary",
+        template="receipt",
+        recipients=[Recipient("alice")],
+        facts={},
+        idempotency_key="no-factory",
+    )
+    stderr = StringIO()
+
+    def run():
+        with redirect_stderr(stderr):
+            return main(["--database-url", f"sqlite+aiosqlite:///{path}", "worker"])
+
+    assert await asyncio.to_thread(run) == 2
+    assert json.loads(stderr.getvalue())["code"] == "invalid_request"
+    status = await notifier.get_status(receipt.deliveries[0].id)
+    assert status.status == "queued" and status.error_code is None

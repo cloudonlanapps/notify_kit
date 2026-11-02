@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from notify_kit.db.database import Database
+from notify_kit.db.models.provider_generation_record import ProviderGenerationRecord
 from notify_kit.db.models.template_provider_record import TemplateProviderRecord
 from notify_kit.db.template_guards import (
     locked_template,
@@ -24,6 +25,15 @@ class TemplateLinks:
         self, provider: str, template: str, *, require_current: bool = False
     ) -> Payload | None:
         """Read opaque metadata; optionally reject a busy or outdated registration."""
+        metadata, _ = await self.snapshot(
+            provider, template, require_current=require_current
+        )
+        return metadata
+
+    async def snapshot(
+        self, provider: str, template: str, *, require_current: bool = False
+    ) -> tuple[Payload | None, str | None]:
+        """Read opaque metadata together with a kit-owned lifecycle version."""
         async with self._database.session() as session:
             parent = await locked_template(session, template)
             if require_current:
@@ -39,7 +49,9 @@ class TemplateLinks:
                     "Update the provider template to the current revision",
                     provider=provider,
                 )
-            return None if row is None else row.provider_metadata
+            return (
+                (None, None) if row is None else (row.provider_metadata, row.generation)
+            )
 
     async def begin(self, template: Template) -> str:
         """Persist a gate around a remote mutation without holding a network transaction."""
@@ -69,6 +81,7 @@ class TemplateLinks:
         metadata: Payload,
         *,
         token: str | None = None,
+        expected_generation: str | None = None,
     ) -> None:
         """Save metadata for a checked revision; lifecycle callers supply their gate token."""
         async with self._database.session(write=True) as session:
@@ -80,6 +93,11 @@ class TemplateLinks:
                     "Template changed during provider operation; retry",
                 )
             row = await session.get(TemplateProviderRecord, (template.label, provider))
+            if token is None and (row is None or row.generation != expected_generation):
+                raise NotifierError(
+                    ErrorCode.TEMPLATE_CHANGED,
+                    "Provider linkage changed during check; retry",
+                )
             if row is None:
                 session.add(
                     TemplateProviderRecord(
@@ -87,11 +105,14 @@ class TemplateLinks:
                         provider=provider,
                         provider_metadata=metadata,
                         template_revision=template.revision,
+                        generation=uuid4().hex,
                     )
                 )
             else:
                 row.provider_metadata = metadata
                 row.template_revision = template.revision
+                if token is not None:
+                    row.generation = uuid4().hex
 
     async def remove(self, provider: str, template: str, *, token: str) -> None:
         """Remove linkage only after the provider confirms removal."""
@@ -101,7 +122,11 @@ class TemplateLinks:
             row = await session.get(TemplateProviderRecord, (template, provider))
             if row is not None:
                 await session.delete(row)
-                parent.lifecycle_identity = uuid4().hex
+                generation = await session.get(
+                    ProviderGenerationRecord, (template, provider)
+                )
+                if generation is not None:
+                    generation.identity = uuid4().hex
 
     async def release_interrupted(
         self, template: str, *, confirmed_stopped: bool
@@ -117,9 +142,19 @@ class TemplateLinks:
             await require_no_active_jobs(session, template)
             parent.operation_token = None
 
-    async def operation_identity(self, template: str, *, token: str) -> str:
-        """Identify this resource generation, stable on retries but renewed after removal."""
-        async with self._database.session() as session:
+    async def operation_identity(
+        self, provider: str, template: str, *, token: str
+    ) -> str:
+        """Keep retry keys independent of other providers and survive absent links."""
+        async with self._database.session(write=True) as session:
             parent = await locked_template(session, template)
             require_idle(parent, token)
-            return parent.lifecycle_identity
+            row = await session.get(ProviderGenerationRecord, (template, provider))
+            if row is None:
+                row = ProviderGenerationRecord(
+                    template_label=template,
+                    provider=provider,
+                    identity=parent.lifecycle_identity,
+                )
+                session.add(row)
+            return row.identity

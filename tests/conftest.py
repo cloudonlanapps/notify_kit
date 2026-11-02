@@ -34,11 +34,18 @@ async def migrated_path(tmp_path):
 
 
 @pytest.fixture
-async def kit(migrated_path):
+async def storage(migrated_path):
+    instance = SQLiteStorage(migrated_path)
+    try:
+        yield instance
+    finally:
+        await instance.aclose()
+
+
+@pytest.fixture
+async def kit(migrated_path, storage):
     provider = RecordingProvider()
-    notifier = Notifier(
-        storage=SQLiteStorage(migrated_path), providers={"primary": provider}
-    )
+    notifier = Notifier(storage=storage, providers={"primary": provider})
     await notifier.initialize()
     await notifier.templates.create(
         label="receipt", definition={"body": "Hello $username"}

@@ -29,7 +29,9 @@ class TemplateLifecycle:
         token = await self._storage.links.begin(template)
         try:
             metadata = await self._storage.links.get(name, label)
-            identity = await self._storage.links.operation_identity(label, token=token)
+            identity = await self._storage.links.operation_identity(
+                name, label, token=token
+            )
             key = hashlib.sha256(
                 f"{operation}\0{name}\0{label}\0{template.revision}\0{identity}".encode()
             ).hexdigest()

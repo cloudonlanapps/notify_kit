@@ -22,7 +22,7 @@ from notify_kit.storage.database_storage import DatabaseStorage
 
 
 class Worker:
-    """Bounded delivery/status attempts and independent durable completion dispatch."""
+    """Delivery/status attempts and independent durable completion dispatch."""
 
     def __init__(
         self,
@@ -44,16 +44,12 @@ class Worker:
         )
 
     async def run_once(self, max_jobs: int) -> tuple[DeliveryStatus, ...]:
-        """Stop at the batch/time budget; future due work remains persisted."""
-        deadline = time.monotonic() + self.policy.time_budget_seconds
+        """Process a bounded batch with a full timeout for each provider operation."""
         await self.storage.deliveries.report_missing_providers(
             self.providers.keys(), max_records=max_jobs
         )
         results: list[DeliveryStatus] = []
         for _ in range(max_jobs):
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
             job = await self.storage.deliveries.claim(
                 self.providers.keys(),
                 lease_seconds=self.policy.lease_seconds,
@@ -61,7 +57,7 @@ class Worker:
             )
             if job is None:
                 break
-            result = await self._attempt(job, remaining)
+            result = await self._attempt(job)
             state, next_due, terminal = self._transition(job, result)
             saved = await self.storage.deliveries.finish(
                 job,
@@ -71,12 +67,12 @@ class Worker:
                 terminal=terminal,
             )
             if saved:
-                results.append(await self.storage.deliveries.get(job.id))
-        await self._dispatch(max_jobs, deadline)
+                results.append(saved)
+        await self._dispatch(max_jobs)
         await self.storage.completions.cleanup(self.retention, max_records=max_jobs)
         return tuple(results)
 
-    async def _attempt(self, job: ClaimedDelivery, remaining: float) -> ProviderResult:
+    async def _attempt(self, job: ClaimedDelivery) -> ProviderResult:
         if time.time() >= job.created_at + self.policy.max_age_seconds:
             if job.reconcile:
                 state = (
@@ -96,10 +92,16 @@ class Worker:
                 error_code=ErrorCode.DELIVERY_EXPIRED,
             )
         provider = self.providers[job.provider]
+        if job.reconcile and not provider.supports_delivery_status:
+            return ProviderResult(
+                ProviderState.ACCEPTED
+                if job.previous_status == DeliveryState.ACCEPTED
+                else ProviderState.UNKNOWN,
+                message_id=job.message_id,
+                reason="Provider does not support delivery confirmation",
+            )
         try:
-            async with asyncio.timeout(
-                min(remaining, self.policy.operation_timeout_seconds)
-            ):
+            async with asyncio.timeout(self.policy.operation_timeout_seconds):
                 if job.reconcile:
                     result = await provider_call(
                         job.provider,
@@ -166,18 +168,19 @@ class Worker:
                 min(due, job.created_at + self.policy.max_age_seconds),
                 False,
             )
-        if result.status == ProviderState.ACCEPTED and (
-            job.provider not in self.providers
-            or not self.providers[job.provider].supports_delivery_status
-        ):
-            return DeliveryState.ACCEPTED, None, True
         state = (
             DeliveryState.ACCEPTED
             if result.status == ProviderState.ACCEPTED
+            or (job.reconcile and job.previous_status == DeliveryState.ACCEPTED)
             else DeliveryState.UNKNOWN
         )
         if expired:
             return state, None, True
+        provider = self.providers[job.provider]
+        if not provider.supports_delivery_status:
+            if state == DeliveryState.ACCEPTED:
+                return state, None, True
+            return state, job.created_at + self.policy.max_age_seconds, False
         return (
             state,
             min(
@@ -187,23 +190,20 @@ class Worker:
             False,
         )
 
-    async def _dispatch(self, max_jobs: int, deadline: float) -> None:
+    async def _dispatch(self, max_jobs: int) -> None:
         for _ in range(max_jobs):
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
             claimed = await self.storage.completions.claim(
                 lease_seconds=self.policy.lease_seconds, policy=self.retention
             )
             if claimed is None:
                 break
             event, token = claimed
+            if token is None:
+                continue
             failed = False
             if self.handler is not None:
                 try:
-                    async with asyncio.timeout(
-                        min(remaining, self.policy.operation_timeout_seconds)
-                    ):
+                    async with asyncio.timeout(self.policy.operation_timeout_seconds):
                         await self.handler(
                             CompletionEvent(
                                 event.id,

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 
@@ -33,6 +34,7 @@ def create_app(
     worker_policy: WorkerPolicy | None = None,
     retention_policy: RetentionPolicy | None = None,
     completion_handler: CompletionHandler | None = None,
+    start_worker: bool = True,
 ) -> FastAPI:
     """Configure explicit storage and application-owned providers for the example."""
     configured = (
@@ -58,7 +60,18 @@ def create_app(
             application.state.notification_service = NotificationService(
                 notifier, active_providers
             )
-            yield
+            stop = asyncio.Event()
+            task = (
+                asyncio.create_task(notifier.run_forever(stop=stop))
+                if start_worker
+                else None
+            )
+            try:
+                yield
+            finally:
+                stop.set()
+                if task is not None:
+                    await task
         finally:
             await storage.aclose()
 

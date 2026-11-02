@@ -1,11 +1,14 @@
+import asyncio
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
+from math import isfinite
 from uuid import uuid4
 
 from notify_kit.completion_handler import CompletionHandler
 from notify_kit.constants import (
     DEFAULT_WORKER_BATCH_SIZE,
+    DEFAULT_WORKER_POLL_INTERVAL_SECONDS,
     MIN_WORKER_BATCH_SIZE,
 )
 from notify_kit.errors.notifier_error import NotifierError
@@ -152,13 +155,13 @@ class Notifier:
         """
         implementation = self._provider(provider)
         definition = await self.templates.get(template)
-        metadata = await self._storage.links.get(
+        metadata, generation = await self._storage.links.snapshot(
             provider, template, require_current=refresh
         )
         if metadata is None or not refresh:
             return metadata
         return await self._check_template(
-            provider, implementation, definition, metadata
+            provider, implementation, definition, metadata, generation
         )
 
     async def _check_template(
@@ -167,6 +170,9 @@ class Notifier:
         provider: NotifyProvider,
         template: Template,
         metadata: Payload,
+        generation: str | None,
+        *,
+        persist: bool = True,
     ) -> Payload:
         check = await provider_call(
             name,
@@ -174,7 +180,10 @@ class Notifier:
             lambda: provider.check_template(template=template, metadata=metadata),
         )
         check = checked_template(check)
-        await self._storage.links.save(name, template, check.metadata)
+        if persist:
+            await self._storage.links.save(
+                name, template, check.metadata, expected_generation=generation
+            )
         if not check.available:
             raise NotifierError(
                 check.error_code or ErrorCode.TEMPLATE_UNAVAILABLE,
@@ -226,12 +235,12 @@ class Notifier:
         if receipt is not None:
             return receipt
         definition = await self.templates.get(template)
-        metadata = await self._storage.links.get(
+        metadata, generation = await self._storage.links.snapshot(
             provider, template, require_current=True
         )
         if metadata is not None:
             metadata = await self._check_template(
-                provider, implementation, definition, metadata
+                provider, implementation, definition, metadata, generation
             )
         prepared = await self._prepare(
             provider, implementation, definition, metadata, destinations, facts
@@ -243,7 +252,7 @@ class Notifier:
             idempotency_key=idempotency_key,
             deliveries=prepared,
             template_revision=definition.revision,
-            expected_metadata=metadata,
+            expected_generation=generation,
         )
 
     async def _prepare(
@@ -271,18 +280,7 @@ class Notifier:
                     ),
                 )
                 payload = snapshot_payload(payload)
-            except ProviderError as error:
-                prepared.append(
-                    PreparedDelivery(
-                        delivery_id,
-                        recipient,
-                        {},
-                        DeliveryState.FAILED,
-                        error.detail,
-                        error.code,
-                    )
-                )
-            except NotifierError as error:
+            except (ProviderError, NotifierError) as error:
                 prepared.append(
                     PreparedDelivery(
                         delivery_id,
@@ -324,6 +322,30 @@ class Notifier:
             raise NotifierError(ErrorCode.INVALID_REQUEST, "max_jobs must be positive")
         return await self._worker.run_once(max_jobs)
 
+    async def run_forever(
+        self,
+        *,
+        stop: asyncio.Event,
+        max_jobs: int = DEFAULT_WORKER_BATCH_SIZE,
+        poll_interval_seconds: float = DEFAULT_WORKER_POLL_INTERVAL_SECONDS,
+    ) -> None:
+        """Process continuously until stop is set; finish active work before returning.
+
+        Await the task before closing storage; supervise propagated storage errors.
+        """
+        if not isfinite(poll_interval_seconds) or poll_interval_seconds <= 0:
+            raise NotifierError(
+                ErrorCode.INVALID_REQUEST, "Polling interval must be positive"
+            )
+        if max_jobs < MIN_WORKER_BATCH_SIZE:
+            raise NotifierError(ErrorCode.INVALID_REQUEST, "max_jobs must be positive")
+        while not stop.is_set():
+            await self.run_once(max_jobs=max_jobs)
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=poll_interval_seconds)
+            except TimeoutError:
+                pass
+
     async def acknowledge(self, delivery_id: str) -> None:
         """Acknowledge a terminal result after the application commits its own state."""
         await self._storage.deliveries.acknowledge(delivery_id)
@@ -338,12 +360,17 @@ class Notifier:
         """Prepare exactly one notification without enqueueing or sending it."""
         implementation = self._provider(provider)
         definition = await self.templates.get(template)
-        metadata = await self._storage.links.get(
+        metadata, generation = await self._storage.links.snapshot(
             provider, template, require_current=True
         )
         if metadata is not None:
             metadata = await self._check_template(
-                provider, implementation, definition, metadata
+                provider,
+                implementation,
+                definition,
+                metadata,
+                generation,
+                persist=False,
             )
         try:
             implementation.validate_recipient(recipient)

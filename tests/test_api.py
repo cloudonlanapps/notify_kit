@@ -8,6 +8,7 @@ from app.providers.fake_sms import FakeSmsProvider
 @pytest.fixture
 async def api(migrated_path):
     app = create_app(
+        start_worker=False,
         database_url=f"sqlite+aiosqlite:///{migrated_path}",
         registered_providers={"console": ConsoleProvider(), "sms": FakeSmsProvider()},
     )
@@ -19,7 +20,7 @@ async def api(migrated_path):
 
 
 @pytest.mark.requirement("R10")
-async def test_should_exercise_template_send_worker_and_status_through_http(
+async def test_should_expose_template_delivery_and_status_when_http_endpoints_are_used(
     api, caplog
 ):
     created = await api.post(
@@ -51,7 +52,7 @@ async def test_should_exercise_template_send_worker_and_status_through_http(
 
 
 @pytest.mark.requirement("R20")
-async def test_should_register_and_send_fake_sms_with_individual_missing_phone_error(
+async def test_should_report_individual_error_when_sms_recipient_has_no_phone(
     api, caplog
 ):
     created = await api.post(
@@ -84,7 +85,9 @@ async def test_should_register_and_send_fake_sms_with_individual_missing_phone_e
 
 
 @pytest.mark.requirement("R28")
-async def test_should_preview_and_acknowledge_with_typed_endpoint_schemas(api):
+async def test_should_use_typed_schemas_when_preview_and_acknowledge_endpoints_are_called(
+    api,
+):
     response = await api.post(
         "/v1/templates",
         json={"label": "greeting", "definition": {"body": "Hello $name"}},
@@ -106,9 +109,52 @@ async def test_should_preview_and_acknowledge_with_typed_endpoint_schemas(api):
 
 
 @pytest.mark.requirement("R8")
-async def test_should_reject_invalid_http_inputs_and_unknown_provider(api):
+async def test_should_reject_request_when_http_input_or_provider_is_invalid(api):
     response = await api.post("/v1/notifications", json={"provider": "console"})
     assert response.status_code == 422
     unknown = await api.get("/v1/providers/missing")
     assert unknown.status_code == 404
     assert unknown.json()["code"] == "provider_not_registered"
+
+
+@pytest.mark.requirement("R40")
+async def test_should_process_automatically_when_fastapi_lifespan_starts_worker(
+    migrated_path,
+):
+    import asyncio
+
+    app = create_app(
+        database_url=f"sqlite+aiosqlite:///{migrated_path}",
+        registered_providers={"console": ConsoleProvider()},
+    )
+    async with asyncio.timeout(5):
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://example"
+            ) as client:
+                created = await client.post(
+                    "/v1/templates",
+                    json={"label": "auto", "definition": {"body": "Hi $username"}},
+                )
+                assert created.status_code == 201
+                sent = await client.post(
+                    "/v1/notifications",
+                    json={
+                        "provider": "console",
+                        "template": "auto",
+                        "recipients": [{"username": "alice"}],
+                        "facts": {},
+                        "idempotency_key": "auto",
+                    },
+                )
+                assert sent.status_code == 202
+                delivery_id = sent.json()["deliveries"][0]["id"]
+                while True:
+                    response = await client.get(
+                        f"/v1/notifications/deliveries/{delivery_id}"
+                    )
+                    assert response.status_code == 200
+                    if response.json()["status"] == "delivered":
+                        break
+                    await asyncio.sleep(0.01)
+                assert response.json()["terminal"]

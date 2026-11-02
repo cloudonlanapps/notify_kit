@@ -27,13 +27,17 @@ async def submit(notifier, key="job"):
 
 
 @pytest.mark.requirement("R36")
-async def test_should_retry_only_transient_failures_until_attempt_limit(
-    kit, monkeypatch
+async def test_should_stop_transient_retries_when_attempt_limit_is_reached(
+    kit, monkeypatch, storage
 ):
     notifier, provider, _ = kit
     clock = [time.time()]
     monkeypatch.setattr(time, "time", lambda: clock[0])
-    notifier._worker.retry = RetryPolicy(max_attempts=2, initial_delay_seconds=5)
+    notifier = Notifier(
+        storage=storage,
+        providers={"primary": provider},
+        retry_policy=RetryPolicy(max_attempts=2, initial_delay_seconds=5),
+    )
     provider.outcomes["alice"] = ProviderResult(
         ProviderState.TEMPORARY_FAILURE, reason="busy"
     )
@@ -51,15 +55,16 @@ async def test_should_retry_only_transient_failures_until_attempt_limit(
 
 
 @pytest.mark.requirement("R41")
-async def test_should_reconcile_expired_claim_without_resending_after_restart(
-    kit, monkeypatch
+async def test_should_reconcile_without_resending_when_expired_claim_is_recovered(
+    kit, monkeypatch, storage
 ):
     notifier, provider, path = kit
     clock = [time.time()]
     monkeypatch.setattr(time, "time", lambda: clock[0])
     receipt = await submit(notifier)
-    claimed = await notifier._storage.deliveries.claim({"primary"}, lease_seconds=1)
+    claimed = await storage.deliveries.claim({"primary"}, lease_seconds=1)
     assert claimed is not None
+    provider.supports_delivery_status = True
     provider.status_outcomes[claimed.id] = ProviderResult(
         ProviderState.DELIVERED, message_id="remote"
     )
@@ -75,7 +80,7 @@ async def test_should_reconcile_expired_claim_without_resending_after_restart(
 
 
 @pytest.mark.requirement("R36")
-async def test_should_poll_acceptance_then_confirm_delivery_without_resending(
+async def test_should_confirm_without_resending_when_accepted_delivery_becomes_delivered(
     kit, monkeypatch
 ):
     notifier, provider, _ = kit
@@ -100,7 +105,7 @@ async def test_should_poll_acceptance_then_confirm_delivery_without_resending(
 
 
 @pytest.mark.requirement("R42")
-async def test_should_retry_completion_independently_without_redelivering(
+async def test_should_retry_completion_without_redelivering_when_handler_fails(
     kit, monkeypatch
 ):
     notifier, provider, path = kit
@@ -133,7 +138,7 @@ async def test_should_retry_completion_independently_without_redelivering(
 
 
 @pytest.mark.requirement("R44")
-async def test_should_keep_query_separate_from_acknowledgement(kit):
+async def test_should_keep_acknowledgement_absent_when_status_is_queried(kit):
     notifier, _, _ = kit
     receipt = await submit(notifier)
     delivery_id = receipt.deliveries[0].id
@@ -147,7 +152,7 @@ async def test_should_keep_query_separate_from_acknowledgement(kit):
 
 
 @pytest.mark.requirement("R45")
-async def test_should_remove_acknowledged_terminal_records_after_retention(
+async def test_should_remove_terminal_records_when_acknowledged_retention_expires(
     kit, monkeypatch
 ):
     _, provider, path = kit
@@ -176,7 +181,9 @@ async def test_should_remove_acknowledged_terminal_records_after_retention(
 
 
 @pytest.mark.requirement("R28")
-async def test_should_preview_without_persisting_or_sending(kit):
+async def test_should_prepare_without_persisting_or_sending_when_preview_is_requested(
+    kit,
+):
     notifier, provider, _ = kit
     result = await notifier.preview(
         provider="primary",
@@ -189,7 +196,7 @@ async def test_should_preview_without_persisting_or_sending(kit):
 
 
 @pytest.mark.requirement("R45")
-async def test_should_not_return_partial_receipt_or_resend_after_partial_retention(
+async def test_should_reject_receipt_replay_when_some_recipient_records_have_expired(
     kit, monkeypatch
 ):
     _, provider, path = kit
@@ -224,7 +231,7 @@ async def test_should_not_return_partial_receipt_or_resend_after_partial_retenti
 
 
 @pytest.mark.requirement("R43")
-async def test_should_resume_same_completion_event_after_restart_without_resend(
+async def test_should_resume_same_completion_event_when_application_restarts(
     kit, monkeypatch
 ):
     _, provider, path = kit
@@ -268,7 +275,9 @@ async def test_should_resume_same_completion_event_after_restart_without_resend(
 
 
 @pytest.mark.requirement("R45")
-async def test_should_preserve_pending_callbacks_until_their_deadline(kit, monkeypatch):
+async def test_should_preserve_pending_callbacks_when_delivery_retention_expires(
+    kit, monkeypatch
+):
     _, provider, path = kit
     clock = [time.time()]
     monkeypatch.setattr(time, "time", lambda: clock[0])

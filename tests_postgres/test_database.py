@@ -57,7 +57,7 @@ async def postgres_url():
 
 
 @pytest.mark.requirement("R41")
-async def test_should_claim_each_recipient_once_across_competing_postgres_workers(
+async def test_should_claim_each_recipient_once_when_postgres_workers_compete(
     postgres_url,
 ):
     provider = RecordingProvider()
@@ -91,7 +91,7 @@ async def test_should_claim_each_recipient_once_across_competing_postgres_worker
 
 
 @pytest.mark.requirement("R33")
-async def test_should_reconcile_concurrent_submission_idempotency_on_postgres(
+async def test_should_return_same_receipt_when_postgres_submissions_share_request_key(
     postgres_url,
 ):
     provider = RecordingProvider()

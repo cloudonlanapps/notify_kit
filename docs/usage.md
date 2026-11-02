@@ -50,7 +50,6 @@ async def create_notifier(provider: NotifyProvider) -> Notifier:
             status_poll_seconds=60,
             operation_timeout_seconds=30,
             lease_seconds=60,
-            time_budget_seconds=10,
         ),
         retention_policy=RetentionPolicy(
             acknowledged_seconds=24 * 60 * 60,
@@ -172,16 +171,38 @@ the entire batch is removed, the key is no longer reserved.
 
 ## 5. Schedule the worker and query status
 
-Have your application's scheduler invoke this periodically:
+For a web application, start a continuous worker in its lifespan handler:
+
+```python
+import asyncio
+
+stop = asyncio.Event()
+worker_task = asyncio.create_task(notifier.run_forever(stop=stop))
+try:
+    yield  # Application lifespan.
+finally:
+    stop.set()
+    await worker_task
+    await notifier.aclose()
+```
+
+The caller owns and supervises this task. Setting `stop` wakes its polling wait;
+active work finishes before it returns. Unexpected storage failures propagate to
+the task, so the application must monitor it and report failures. Forced task
+cancellation leaves claimed work to lease recovery; prefer the stop event.
+The FastAPI example starts this worker automatically.
+
+`poll_interval_seconds` defaults to one second between batches, and `max_jobs`
+defaults to 100 delivery attempts and 100 completion attempts per batch.
+There is no overall time budget. Each provider operation or completion handler
+has its own timeout. Graceful shutdown can therefore wait for the current batch.
+Retries remain durable and run when due; permanent failures are not retried.
+
+For a scheduler or manual invocation, the bounded alternative remains:
 
 ```python
 updated_deliveries = await notifier.run_once(max_jobs=100)
 ```
-
-Each invocation processes due attempts and returns. Temporary failures are
-scheduled for later attempts according to policy; the worker does not sleep until
-the next retry. Permanent failures are not automatically retried. Keep scheduling
-invocations so due retries are processed.
 
 Query one recipient or the entire batch:
 
@@ -296,6 +317,7 @@ After saving a terminal outcome in your application, acknowledge that recipient:
 await notifier.acknowledge(delivery_id)
 ```
 
+Empty recipient batches retain their IDs for unacknowledged_seconds from submission.
 Queries do not acknowledge automatically. The scheduled worker also runs bounded
 cleanup: defaults retain acknowledged results for 24 hours and unacknowledged
 results for 30 days. Pending callbacks hold records until handling succeeds or its

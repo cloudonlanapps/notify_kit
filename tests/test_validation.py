@@ -28,7 +28,7 @@ from notify_kit.services.serialization import snapshot_payload
         lambda: RetentionPolicy(callback_max_attempts=0),
     ],
 )
-def test_should_reject_invalid_policy_configuration(construct):
+def test_should_reject_policy_when_configuration_is_invalid(construct):
     with pytest.raises(NotifierError) as error:
         construct()
     assert error.value.code == ErrorCode.INVALID_REQUEST
@@ -36,7 +36,7 @@ def test_should_reject_invalid_policy_configuration(construct):
 
 @pytest.mark.requirement("R8")
 @pytest.mark.parametrize("value", [math.inf, math.nan])
-def test_should_reject_nonfinite_retry_delays(value):
+def test_should_reject_retry_delay_when_value_is_nonfinite(value):
     with pytest.raises(NotifierError):
         RetryPolicy(initial_delay_seconds=value)
 
@@ -45,14 +45,14 @@ def test_should_reject_nonfinite_retry_delays(value):
 @pytest.mark.parametrize(
     "value", [None, ["not an object"], {"bad": object()}, {"bad": math.nan}]
 )
-def test_should_reject_nonserializable_provider_payload(value):
+def test_should_reject_provider_payload_when_value_is_not_serializable(value):
     with pytest.raises(NotifierError) as error:
         snapshot_payload(value)
     assert error.value.code == ErrorCode.PROVIDER_ERROR
 
 
 @pytest.mark.requirement("R8")
-async def test_should_reject_empty_configuration_names_and_request_keys(kit):
+async def test_should_reject_configuration_when_names_or_request_keys_are_empty(kit):
     notifier, provider, path = kit
     with pytest.raises(NotifierError):
         Notifier(storage=SQLiteStorage(path), providers={"": provider})
@@ -69,7 +69,7 @@ async def test_should_reject_empty_configuration_names_and_request_keys(kit):
 
 
 @pytest.mark.requirement("R4")
-async def test_should_reject_database_newer_than_installed_package(migrated_path):
+async def test_should_reject_database_when_schema_is_newer_than_package(migrated_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{migrated_path}")
     async with engine.begin() as connection:
         await connection.execute(
@@ -86,7 +86,7 @@ async def test_should_reject_database_newer_than_installed_package(migrated_path
 
 
 @pytest.mark.requirement("R42")
-async def test_should_emit_completion_for_preparation_failure_without_provider_send(
+async def test_should_emit_completion_without_sending_when_preparation_fails(
     kit,
 ):
     _, provider, path = kit

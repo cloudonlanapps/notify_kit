@@ -122,7 +122,7 @@ async def test_should_claim_each_job_once_when_two_workers_compete(kit):
 
 
 @pytest.mark.requirement("R9")
-async def test_should_reject_unknown_provider_before_submission(kit):
+async def test_should_reject_submission_when_provider_is_unknown(kit):
     notifier, provider, _ = kit
     with pytest.raises(NotifierError) as error:
         await notifier.send(

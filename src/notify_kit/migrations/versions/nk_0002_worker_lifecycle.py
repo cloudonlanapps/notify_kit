@@ -76,9 +76,9 @@ def upgrade() -> None:
         sa.Column("lease_token", sa.Text(), nullable=True),
         sa.Column("lease_expires_at", sa.Float(), nullable=True),
     )
-    # Backfill one stable event per historical terminal recipient.
+    # Historical completions are already handled; upgrading must not replay callbacks.
     op.execute(
-        "INSERT INTO notify_kit_completions (id, delivery_id, status, attempts, created_at, next_attempt_at) SELECT id, id, 'pending', 0, completed_at, completed_at FROM notify_kit_deliveries WHERE terminal = true"
+        "INSERT INTO notify_kit_completions (id, delivery_id, status, attempts, created_at, next_attempt_at) SELECT id, id, 'handled', 0, completed_at, NULL FROM notify_kit_deliveries WHERE terminal = true"
     )
     op.execute(
         "UPDATE notify_kit_schema_state SET revision = 'nk_0002' WHERE key = 'schema'"

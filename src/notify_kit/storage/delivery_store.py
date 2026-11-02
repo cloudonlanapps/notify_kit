@@ -13,6 +13,7 @@ from notify_kit.constants import (
     DEFAULT_WORKER_BATCH_SIZE,
 )
 from notify_kit.db.database import Database
+from notify_kit.db.delivery_mapping import delivery_recipient, delivery_status
 from notify_kit.db.models.batch_record import BatchRecord
 from notify_kit.db.models.completion_record import CompletionRecord
 from notify_kit.db.models.delivery_record import DeliveryRecord
@@ -27,10 +28,8 @@ from notify_kit.models.delivery_status import DeliveryStatus
 from notify_kit.models.error_code import ErrorCode
 from notify_kit.models.prepared_delivery import PreparedDelivery
 from notify_kit.models.provider_result import ProviderResult
-from notify_kit.models.recipient import Recipient
 from notify_kit.models.send_receipt import SendReceipt
 from notify_kit.storage.job_store import JobStore
-from notify_kit.types import Payload
 
 
 class DeliveryStore:
@@ -53,12 +52,7 @@ class DeliveryStore:
             tuple(
                 DeliveryReference(
                     row.id,
-                    Recipient(
-                        username=row.username,
-                        name=row.display_name,
-                        email=row.email,
-                        phone=row.phone,
-                    ),
+                    delivery_recipient(row),
                 )
                 for row in rows
             ),
@@ -106,7 +100,7 @@ class DeliveryStore:
         idempotency_key: str,
         deliveries: Sequence[PreparedDelivery],
         template_revision: int,
-        expected_metadata: Payload | None,
+        expected_generation: str | None,
     ) -> SendReceipt:
         """Commit the batch atomically and reconcile concurrent idempotency keys."""
         try:
@@ -122,8 +116,8 @@ class DeliveryStore:
                         "Template changed during preparation; retry",
                     )
                 link = await session.get(TemplateProviderRecord, (template, provider))
-                current_metadata = None if link is None else link.provider_metadata
-                if current_metadata != expected_metadata:
+                current_generation = None if link is None else link.generation
+                if current_generation != expected_generation:
                     raise NotifierError(
                         ErrorCode.TEMPLATE_CHANGED,
                         "Provider linkage changed during preparation; retry",
@@ -194,32 +188,6 @@ class DeliveryStore:
                 ) from None
             return previous
 
-    @staticmethod
-    def _status(row: DeliveryRecord) -> DeliveryStatus:
-        return DeliveryStatus(
-            id=row.id,
-            batch_id=row.batch_id,
-            provider=row.provider,
-            template=row.template_label,
-            recipient=Recipient(
-                username=row.username,
-                name=row.display_name,
-                email=row.email,
-                phone=row.phone,
-            ),
-            status=DeliveryState(row.status),
-            attempts=row.attempts,
-            message_id=row.message_id,
-            reason=row.reason,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            next_attempt_at=row.next_attempt_at,
-            acknowledged_at=row.acknowledged_at,
-            error_code=ErrorCode(row.error_code) if row.error_code else None,
-            terminal=row.terminal,
-            completed_at=row.completed_at,
-        )
-
     async def get(self, delivery_id: str) -> DeliveryStatus:
         """Retrieve an individual status or raise a not-found NotifierError."""
         async with self._database.session() as session:
@@ -228,7 +196,7 @@ class DeliveryStore:
                 raise NotifierError(
                     ErrorCode.NOT_FOUND, f"Delivery not found: {delivery_id}"
                 )
-            return self._status(row)
+            return delivery_status(row)
 
     async def get_batch(self, batch_id: str) -> tuple[DeliveryStatus, ...]:
         """Retrieve a batch in submission order or raise a not-found NotifierError."""
@@ -240,7 +208,7 @@ class DeliveryStore:
                 .where(DeliveryRecord.batch_id == batch_id)
                 .order_by(DeliveryRecord.position)
             )
-            return tuple(self._status(row) for row in rows)
+            return tuple(delivery_status(row) for row in rows)
 
     async def claim(
         self,
@@ -262,7 +230,7 @@ class DeliveryStore:
         result: ProviderResult,
         next_attempt_at: float | None,
         terminal: bool,
-    ) -> bool:
+    ) -> DeliveryStatus | None:
         """Commit one fenced attempt and its optional terminal completion event."""
         return await self._jobs.finish(
             job,
