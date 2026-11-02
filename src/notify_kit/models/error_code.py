@@ -19,6 +19,7 @@ class ErrorCode(StrEnum):
     TEMPLATE_BUSY = "template_busy"
     UNSUPPORTED_OPERATION = "unsupported_operation"
     IDEMPOTENCY_CONFLICT = "idempotency_conflict"
+    DELIVERY_CONFIRMATION_UNAVAILABLE = "delivery_confirmation_unavailable"
     DELIVERY_UNKNOWN = "delivery_unknown"
     PROVIDER_ACTION_REQUIRED = "provider_action_required"
     TEMPLATE_PENDING = "template_pending"

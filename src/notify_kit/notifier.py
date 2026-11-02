@@ -340,7 +340,7 @@ class Notifier:
         if max_jobs < MIN_WORKER_BATCH_SIZE:
             raise NotifierError(ErrorCode.INVALID_REQUEST, "max_jobs must be positive")
         while not stop.is_set():
-            await self.run_once(max_jobs=max_jobs)
+            await self._worker.run_once(max_jobs, stop=stop)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=poll_interval_seconds)
             except TimeoutError:

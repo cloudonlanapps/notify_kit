@@ -208,3 +208,101 @@ these scenarios; each one comes from reading the code.
 These changes remain part of issue #1 and PR #2. The application must run
 alembic upgrade heads before startup for the new nk_0003 schema. No live messages
 were sent and no application database was migrated or deleted.
+
+## Re-review remarks (2026-11-02)
+
+Every resolution above was checked against the working tree just before commit
+3698652. All 26 match the code. At that point `uv run pytest` passed 123 tests;
+the commit reports 124. `uv run ruff check .` is clean. R1 and R2 still apply to
+3698652. Like the original review, the remarks below come from reading the code;
+no scenario was reproduced.
+
+### Remaining issues
+
+R1. **Finding 13 is only partly resolved: an idle worker still opens a write transaction on every run.**
+
+**Resolution:** Fixed. JobStore.claim now performs a read-only due-work check before opening its write transaction. A positive check still reselects and locks the row atomically (SQLite BEGIN IMMEDIATE / PostgreSQL SKIP LOCKED), so the precheck never grants ownership. The new regression observes all SQL from a public Notifier.run_once() and rejects any idle write/BEGIN IMMEDIATE, not just maintenance writes. This adds a read transaction for each claim in exchange for avoiding idle write locks.
+
+   `JobStore.claim` (`src/notify_kit/storage/job_store.py`) still runs inside
+   `session(write=True)`. On SQLite that is `BEGIN IMMEDIATE`, even when nothing
+   is due. `report_missing_providers` and `cleanup` now check first with a
+   read-only query, and the idle-maintenance test in
+   `tests/test_storage_efficiency.py` covers only those two. The delivery claim
+   has no such check. With `run_forever` at the default 1-second poll interval,
+   an idle example server takes the SQLite write lock once a second.
+   The resolution says "an idle worker still performs database reads", which
+   understates this. Fix: add the same read-only "anything due?" check that
+   `CompletionStore.claim` now does, and extend the idle test to cover
+   `run_once` as a whole.
+
+R2. **Shutdown can be delayed by minutes (introduced by the finding 1 fix).**
+
+**Resolution:** Fixed. run_forever passes its stop event into worker batch processing. Delivery and callback loops check it before each new claim; the active operation finishes and commits its result, then remaining work stays durable. Cleanup is skipped when stopping. Tests set stop while a send and, separately, a completion handler are blocked, then verify only the active operation finishes and the next item remains queued/pending. Shutdown is no longer tied to the full batch; provider cancellation cooperation and database responsiveness remain necessary.
+
+   `Notifier.run_forever` checks `stop` only between `run_once` calls. One
+   `run_once` can claim up to `max_jobs` (default 100) jobs, each allowed
+   `operation_timeout_seconds` (default 30). It can then dispatch up to 100
+   callbacks under the same timeout. The FastAPI lifespan in
+   `examples/fastapi_server/app/main.py` awaits the task on shutdown, so a slow
+   provider can hold shutdown for a long time. Fix: pass `stop` (or a should-stop
+   check) into `run_once` and `_dispatch`, check it before each new claim, and
+   add a test that sets `stop` while a slow send is running.
+
+### Minor
+
+R3. **A worker crash in the example app goes unnoticed until shutdown.**
+
+**Resolution:** Fixed with immediate error logging, without adding an automatic restart policy. The example registers a task done-callback that retrieves/logs unexpected failures as soon as the worker exits. Cancellation is ignored and normal shutdown is silent. The failure still propagates when lifespan awaits the task on shutdown. The regression asserts the error is logged before leaving lifespan; removing the monitor callback makes it fail.
+
+   If `run_forever` raises, for example on `STORAGE_ERROR`, the task ends and
+   the server keeps serving requests with no worker. The exception only shows
+   up when the lifespan awaits the task on shutdown. Consider logging it from a
+   done-callback, or restarting the worker after a backoff.
+
+R4. **An accepted row can carry a misleading error code and reason.**
+
+**Resolution:** Fixed using the agreed diagnostic distinction instead of discarding lookup errors. A previously accepted delivery remains ACCEPTED, keeps its message ID, and reports DELIVERY_CONFIRMATION_UNAVAILABLE for an inconclusive lookup. Its reason explicitly starts with known acceptance and identifies the lookup problem while retaining safe provider details. Successful later confirmation replaces the transient diagnostic. Existing normal-unknown and raised-lookup regressions now assert the error category and acceptance wording.
+
+   When a status check raises or times out, `_attempt` returns UNKNOWN with
+   `error_code=DELIVERY_UNKNOWN` and a reason such as "timed out; outcome
+   uncertain". `_transition` correctly keeps the state ACCEPTED, but
+   `JobStore.finish` still stores that error code and reason. The status then
+   reads `accepted` alongside `DELIVERY_UNKNOWN`. Consider keeping the previous
+   error code and reason when reconciliation is inconclusive.
+
+R5. **`uv run ruff format --check .` fails on code examples in three docs files**
+
+**Resolution:** Fixed. Ruff formatted all three Markdown code examples, and just lint / just format now include docs/. A full-checkout ruff format --check . also passes. Earlier validation used the explicit Python-source paths shown in justfile; it did not cover Markdown code fences.
+
+   (`docs/README.md`, `docs/usage.md` and `docs/examples/fastapi_server/providers.md`).
+   The same failures existed at 203113b and remain in 3698652, so these changes
+   did not cause them. "Fix validation" says Ruff format passed, so that check
+   presumably did not cover Markdown; fix these or narrow the documented command.
+
+### Minor drift note
+
+- nk_0003 adds `notify_kit_template_provider.generation` with
+  `server_default="legacy"`, but the ORM model declares no server default.
+  This is harmless because every insert sets a generation, but it is drift
+  between the model and the migration if schemas are ever compared.
+
+**Drift resolution:** Fixed the ORM declarations to match the existing migration
+defaults, including generation="legacy" and the other five retained backfill
+defaults. No released migration is edited and the schema head remains nk_0003.
+Schema parity checks now enable compare_server_default=True on both SQLite and
+PostgreSQL; they detect default drift instead of ignoring it.
+
+**Test-count clarification:** Commit 3698652 collected and passed 124 tests after
+the automatic FastAPI lifespan test was added. The earlier 123-test run preceded
+that final test. The validation record reflects the final run.
+
+### Re-review fix validation
+
+- 128 offline tests passed; 95.39% runtime line coverage (90% minimum).
+- Two PostgreSQL 16 tests passed, including server-default schema parity, in a private temporary cluster that was stopped and removed.
+- Strict package type checking, full-checkout Ruff lint and full-checkout formatting (including Markdown code fences) passed.
+- Wheel/sdist build, strict Twine validation and isolated offline installed-wheel migration/SQLite smoke passed.
+- New regressions reproduced idle locking, batch shutdown, diagnostic and default-drift failures before fixes. Removing the worker-monitor callback made its strengthened test fail; restoring it passed.
+- All existing review text is preserved, with resolutions added for R1–R5 and the drift note. No application database was changed and no live messages were sent.
+
+These fixes continue on the existing issue #1 branch and PR #2.

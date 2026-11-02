@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Integer, Text
+from sqlalchemy import JSON, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from notify_kit.constants import INITIAL_TEMPLATE_REVISION
@@ -15,4 +15,4 @@ class TemplateRecord(Base):
     definition: Mapped[Payload] = mapped_column(JSON, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, default=INITIAL_TEMPLATE_REVISION)
     operation_token: Mapped[str | None] = mapped_column(Text)
-    lifecycle_identity: Mapped[str] = mapped_column(Text)
+    lifecycle_identity: Mapped[str] = mapped_column(Text, server_default=text("''"))

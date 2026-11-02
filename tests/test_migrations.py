@@ -22,7 +22,9 @@ async def test_should_match_orm_schema_when_app_and_kit_migrations_finish(
     engine = create_async_engine(f"sqlite+aiosqlite:///{migrated_path}")
 
     def compare(connection):
-        current = MigrationContext.configure(connection)
+        current = MigrationContext.configure(
+            connection, opts={"compare_server_default": True}
+        )
         assert set(current.get_current_heads()) == {"app_0001", SCHEMA_REVISION}
         assert compare_metadata(current, metadata()) == []
 

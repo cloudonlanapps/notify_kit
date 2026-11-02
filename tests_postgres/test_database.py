@@ -40,7 +40,12 @@ async def postgres_url():
             config.attributes["connection"] = connection
             command.upgrade(config, "heads")
             assert (
-                compare_metadata(MigrationContext.configure(connection), metadata())
+                compare_metadata(
+                    MigrationContext.configure(
+                        connection, opts={"compare_server_default": True}
+                    ),
+                    metadata(),
+                )
                 == []
             )
 

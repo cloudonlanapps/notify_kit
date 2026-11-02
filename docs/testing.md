@@ -9,6 +9,9 @@ just test
 just package
 ```
 
+just lint also checks Python code fences in docs/. The formatter can be run across
+the checkout with uv run ruff format --check .
+
 The default pytest suite blocks external sockets (Unix sockets remain available
 for asyncio/SQLite). Each test uses a temporary database initialized through the
 application's Alembic environment. No production/example database, API key or

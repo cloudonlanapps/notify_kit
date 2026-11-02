@@ -14,6 +14,8 @@ class BatchRecord(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     idempotency_key: Mapped[str] = mapped_column(Text, unique=True)
     request: Mapped[str] = mapped_column(Text)
-    recipient_count: Mapped[int] = mapped_column(Integer, default=0)
+    recipient_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
-    created_at: Mapped[float] = mapped_column(Float, default=time.time, index=True)
+    created_at: Mapped[float] = mapped_column(
+        Float, default=time.time, server_default="0", index=True
+    )

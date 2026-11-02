@@ -7,6 +7,7 @@ from sqlalchemy import (
     Integer,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,8 +49,12 @@ class DeliveryRecord(Base):
     next_attempt_at: Mapped[float | None] = mapped_column(Float)
     acknowledged_at: Mapped[float | None] = mapped_column(Float)
     error_code: Mapped[str | None] = mapped_column(Text)
-    terminal: Mapped[bool] = mapped_column(Boolean, default=False)
+    terminal: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
     completed_at: Mapped[float | None] = mapped_column(Float)
     lease_token: Mapped[str | None] = mapped_column(Text)
     lease_expires_at: Mapped[float | None] = mapped_column(Float)
-    content_cleared: Mapped[bool] = mapped_column(Boolean, default=False)
+    content_cleared: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )

@@ -88,17 +88,15 @@ If you already have filters, compose them using AND rather than replacing them:
 
 ```python
 def include_name(name, type_, parent_names):
-    return (
-        exclude_kit_names(name, type_, parent_names)
-        and application_include_name(name, type_, parent_names)
+    return exclude_kit_names(name, type_, parent_names) and application_include_name(
+        name, type_, parent_names
     )
 
 
 def include_object(object_, name, type_, reflected, compare_to):
-    return (
-        exclude_kit_objects(object_, name, type_, reflected, compare_to)
-        and application_include_object(object_, name, type_, reflected, compare_to)
-    )
+    return exclude_kit_objects(
+        object_, name, type_, reflected, compare_to
+    ) and application_include_object(object_, name, type_, reflected, compare_to)
 ```
 
 Use your existing application connection and transaction management. Do not

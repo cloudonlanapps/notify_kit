@@ -19,4 +19,4 @@ class TemplateProviderRecord(Base):
     provider_metadata: Mapped[Payload] = mapped_column("metadata", JSON, nullable=False)
     template_revision: Mapped[int] = mapped_column(Integer)
 
-    generation: Mapped[str] = mapped_column(Text)
+    generation: Mapped[str] = mapped_column(Text, server_default="legacy")

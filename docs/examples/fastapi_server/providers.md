@@ -95,14 +95,24 @@ from app.providers.resend import ResendProvider
 from app.schemas.email_settings import EmailSettings
 
 # Values below come from your own startup secret/configuration source.
-app = create_app(registered_providers={
-    "brevo": BrevoProvider(EmailSettings(
-        api_key=brevo_key, from_email=sender_email, from_name=sender_name,
-    )),
-    "resend": ResendProvider(EmailSettings(
-        api_key=resend_key, from_email=sender_email, from_name=sender_name,
-    )),
-})
+app = create_app(
+    registered_providers={
+        "brevo": BrevoProvider(
+            EmailSettings(
+                api_key=brevo_key,
+                from_email=sender_email,
+                from_name=sender_name,
+            )
+        ),
+        "resend": ResendProvider(
+            EmailSettings(
+                api_key=resend_key,
+                from_email=sender_email,
+                from_name=sender_name,
+            )
+        ),
+    }
+)
 ```
 
 Passing registered_providers replaces the defaults; include ConsoleProvider and

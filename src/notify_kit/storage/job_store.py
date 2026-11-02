@@ -51,6 +51,9 @@ class JobStore:
             .order_by(DeliveryRecord.created_at, DeliveryRecord.id)
             .limit(1)
         )
+        async with self._database.session() as session:
+            if not await session.scalar(select(statement.exists())):
+                return None
         if not self._database.is_sqlite:
             statement = statement.with_for_update(skip_locked=True)
         async with self._database.session(write=True) as session:

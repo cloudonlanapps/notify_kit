@@ -9,3 +9,6 @@
 - Add a continuous worker with graceful shutdown and full per-operation timeouts;
   resolve PR #2 review findings for acceptance preservation, callbacks, template
   generations, empty-batch retention, preview, validation and storage efficiency.
+- Stop claiming work between operations during shutdown, avoid idle delivery write
+  locks, log background worker failures immediately, distinguish confirmation
+  lookup errors from send uncertainty, and check schema defaults and doc formatting.

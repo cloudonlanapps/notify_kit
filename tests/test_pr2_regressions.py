@@ -55,6 +55,8 @@ async def test_should_preserve_acceptance_when_status_lookup_is_inconclusive(
     clock[0] += 61
     result = await notifier.run_once()
     assert result[0].status == DeliveryState.ACCEPTED
+    assert result[0].error_code == ErrorCode.DELIVERY_CONFIRMATION_UNAVAILABLE
+    assert "accepted" in result[0].reason.lower()
     assert result[0].message_id == "remote"
     assert not result[0].terminal
     clock[0] += 86400

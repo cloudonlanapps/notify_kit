@@ -24,6 +24,7 @@ from app.routers import notifications, providers, templates, worker
 from app.schemas.error_response import ErrorResponse
 from app.schemas.health_response import HealthResponse
 from app.services.notifications import NotificationService
+from app.services.worker_monitor import report_worker_failure
 
 
 def create_app(
@@ -66,6 +67,8 @@ def create_app(
                 if start_worker
                 else None
             )
+            if task is not None:
+                task.add_done_callback(report_worker_failure)
             try:
                 yield
             finally:

@@ -110,7 +110,11 @@ accepted result then schedules checks; return DELIVERED for confirmation,
 PERMANENT_FAILURE for known rejection, or UNKNOWN when a lookup cannot establish
 the outcome. A check returning TEMPORARY_FAILURE explicitly establishes that no
 delivery happened and authorizes a new send. Do not use that classification for
-a lookup outage. Stable delivery idempotency keys are reused only for the same job.
+a lookup outage. If an inconclusive lookup follows known acceptance, queries keep
+ACCEPTED with DELIVERY_CONFIRMATION_UNAVAILABLE and a diagnostic that explicitly
+describes the lookup failure. This does not mean the original send was uncertain.
+A later conclusive result replaces this transient diagnostic.
+Stable delivery idempotency keys are reused only for the same job.
 
 Providers without confirmation finish at accepted without inventing delivered.
 Unknown/interrupted sends reconcile until their configured deadline, then finish

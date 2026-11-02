@@ -43,13 +43,17 @@ class Worker:
             handler,
         )
 
-    async def run_once(self, max_jobs: int) -> tuple[DeliveryStatus, ...]:
+    async def run_once(
+        self, max_jobs: int, *, stop: asyncio.Event | None = None
+    ) -> tuple[DeliveryStatus, ...]:
         """Process a bounded batch with a full timeout for each provider operation."""
         await self.storage.deliveries.report_missing_providers(
             self.providers.keys(), max_records=max_jobs
         )
         results: list[DeliveryStatus] = []
         for _ in range(max_jobs):
+            if stop is not None and stop.is_set():
+                break
             job = await self.storage.deliveries.claim(
                 self.providers.keys(),
                 lease_seconds=self.policy.lease_seconds,
@@ -59,6 +63,17 @@ class Worker:
                 break
             result = await self._attempt(job)
             state, next_due, terminal = self._transition(job, result)
+            if (
+                state == DeliveryState.ACCEPTED
+                and result.status == ProviderState.UNKNOWN
+            ):
+                result = ProviderResult(
+                    ProviderState.ACCEPTED,
+                    message_id=result.message_id or job.message_id,
+                    reason="Delivery accepted; confirmation lookup inconclusive"
+                    + (f": {result.reason}" if result.reason else ""),
+                    error_code=ErrorCode.DELIVERY_CONFIRMATION_UNAVAILABLE,
+                )
             saved = await self.storage.deliveries.finish(
                 job,
                 status=state,
@@ -68,8 +83,9 @@ class Worker:
             )
             if saved:
                 results.append(saved)
-        await self._dispatch(max_jobs)
-        await self.storage.completions.cleanup(self.retention, max_records=max_jobs)
+        await self._dispatch(max_jobs, stop=stop)
+        if stop is None or not stop.is_set():
+            await self.storage.completions.cleanup(self.retention, max_records=max_jobs)
         return tuple(results)
 
     async def _attempt(self, job: ClaimedDelivery) -> ProviderResult:
@@ -190,8 +206,12 @@ class Worker:
             False,
         )
 
-    async def _dispatch(self, max_jobs: int) -> None:
+    async def _dispatch(
+        self, max_jobs: int, *, stop: asyncio.Event | None = None
+    ) -> None:
         for _ in range(max_jobs):
+            if stop is not None and stop.is_set():
+                break
             claimed = await self.storage.completions.claim(
                 lease_seconds=self.policy.lease_seconds, policy=self.retention
             )

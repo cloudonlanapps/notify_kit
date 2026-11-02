@@ -1,10 +1,10 @@
 # Format and lint all maintained Python source, including offline test helpers.
 lint:
-    uv run ruff format --check src tests tests_postgres scripts examples/fastapi_server/app examples/fastapi_server/alembic
+    uv run ruff format --check docs src tests tests_postgres scripts examples/fastapi_server/app examples/fastapi_server/alembic
     uv run ruff check src tests tests_postgres scripts examples/fastapi_server/app examples/fastapi_server/alembic
 
 format:
-    uv run ruff format src tests tests_postgres scripts examples/fastapi_server/app examples/fastapi_server/alembic
+    uv run ruff format docs src tests tests_postgres scripts examples/fastapi_server/app examples/fastapi_server/alembic
 
 # No external network/services/credentials are used by the default suite.
 test:

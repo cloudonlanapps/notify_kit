@@ -22,6 +22,8 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 Open [Swagger UI](http://127.0.0.1:8000/docs) or
 [OpenAPI JSON](http://127.0.0.1:8000/openapi.json). The lifespan starts notifier.run_forever() automatically and waits for it during
 shutdown. POST /v1/worker/run-once is also available for manual processing.
+Worker failures are logged immediately; they also propagate when lifespan awaits
+the task on shutdown. This example does not automatically restart failed workers.
 Pass start_worker=False to create_app for scheduler-driven integration or tests. The SQLite file
 example_notifications.db is relative to the working directory. Restarting with
 the same file preserves templates, registrations and delivery status.

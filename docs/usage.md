@@ -31,7 +31,12 @@ same provider implementation can have several configured instances.
 
 ```python
 from notify_kit import (
-    Notifier, NotifyProvider, RetryPolicy, WorkerPolicy, RetentionPolicy, SQLiteStorage,
+    Notifier,
+    NotifyProvider,
+    RetryPolicy,
+    WorkerPolicy,
+    RetentionPolicy,
+    SQLiteStorage,
 )
 
 
@@ -195,7 +200,10 @@ The FastAPI example starts this worker automatically.
 `poll_interval_seconds` defaults to one second between batches, and `max_jobs`
 defaults to 100 delivery attempts and 100 completion attempts per batch.
 There is no overall time budget. Each provider operation or completion handler
-has its own timeout. Graceful shutdown can therefore wait for the current batch.
+has its own timeout. Graceful shutdown waits for the active operation to finish
+and persist its result, then starts no further sends or callbacks. Remaining work
+stays durable for the next worker. Database operations and providers must remain
+responsive; provider code must cooperate with cancellation for timeouts to work.
 Retries remain durable and run when due; permanent failures are not retried.
 
 For a scheduler or manual invocation, the bounded alternative remains:
@@ -232,7 +240,9 @@ from notify_kit import NotifierError
 
 try:
     await notifier.template_status(
-        provider="primary", template="payment_receipt", refresh=True,
+        provider="primary",
+        template="payment_receipt",
+        refresh=True,
     )
 except NotifierError as error:
     print(error.code, error.detail, error.provider, error.operation)
@@ -333,7 +343,8 @@ repeat the same operation with its stable provider operation key:
 from notify_kit import TemplateOperation
 
 await notifier.template_recover(
-    provider="primary", template="payment_receipt",
+    provider="primary",
+    template="payment_receipt",
     operation=TemplateOperation.REGISTER,  # The operation that was interrupted.
     confirmed_stopped=True,
 )
