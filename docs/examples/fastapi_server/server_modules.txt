@@ -1,0 +1,19 @@
+Example server modules — updated 2026-11-02
+
+app/main.py — application factory, lifespan, error handlers, GET /health
+app/routers/providers.py — /v1/providers
+app/routers/templates.py — /v1/templates
+app/routers/notifications.py — /v1/notifications
+app/routers/worker.py — /v1/worker
+app/services/notifications.py — public kit API adapter
+app/providers/console.py — application-owned console provider
+app/schemas/ — Pydantic endpoint request/response models
+alembic/env.py — application-owned migration environment; app and notify_kit branches
+app/db/base.py — application metadata for future application-only tables
+app/providers/factory.py — startup registration; optional Brevo/Resend credentials
+app/providers/fake_sms.py — persisted internal SMS registration and console sending
+app/providers/http_email.py — email preparation and asynchronous HTTP transport
+app/providers/resend.py — Resend send payload and authentication
+app/providers/brevo.py — Brevo send payload and authentication
+app/schemas/email_settings.py — validated provider startup settings
+app/schemas/email_definition.py — email template definition validation

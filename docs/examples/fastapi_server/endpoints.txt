@@ -1,0 +1,27 @@
+Example server endpoints — 21 operations
+
+1. GET /health
+2. GET /v1/providers
+3. GET /v1/providers/{name}
+4. POST /v1/templates
+5. GET /v1/templates
+6. GET /v1/templates/{label}
+7. PUT /v1/templates/{label}
+8. DELETE /v1/templates/{label}
+9. POST /v1/templates/{label}/providers/{provider}/register
+10. GET /v1/templates/{label}/providers/{provider}
+11. POST /v1/templates/{label}/providers/{provider}/refresh
+12. POST /v1/notifications
+13. GET /v1/notifications/deliveries/{delivery_id}
+14. GET /v1/notifications/batches/{batch_id}
+15. POST /v1/worker/run-once
+
+16. PUT /v1/templates/{label}/providers/{provider}
+17. DELETE /v1/templates/{label}/providers/{provider}
+
+18. POST /v1/notifications/preview
+19. POST /v1/notifications/deliveries/{delivery_id}/acknowledge
+20. GET /v1/notifications/deliveries/{delivery_id}/completion
+21. POST /v1/templates/{label}/providers/{provider}/recover
+
+Live schema: /openapi.json

@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "notify-kit"
+version = "0.1.0"
+description = "Provider-based persistent notification orchestration"
+readme = "docs/README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "sqlalchemy[asyncio]>=2.0.48,<3",
+    "aiosqlite>=0.22,<1",
+    "alembic>=1.18.4,<2",
+]
+
+[project.scripts]
+notify-kit = "notify_kit.cli:main"
+
+[project.optional-dependencies]
+postgres = ["asyncpg>=0.31,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/notify_kit"]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.40.2",
+    "fastapi>=0.135.1,<1",
+    "hatchling>=1.33.0",
+    "httpx>=0.28.1",
+    "pydantic[email]>=2.12.5,<3",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "pytest-cov>=7.1.0",
+    "pytest-socket>=0.8.1",
+    "ruff>=0.17.3,<0.18",
+    "twine>=7.0.0",
+    "uvicorn>=0.54.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+include = ["src"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+extraPaths = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = [".", "examples/fastapi_server"]
+addopts = "--strict-markers --disable-socket --allow-unix-socket"
+markers = ["requirement(id): requirement proved by this test"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+# Alembic loads revisions dynamically; schema/data upgrades have dedicated tests.
+omit = ["*/migrations/versions/*"]
+
+[tool.hatch.build.targets.sdist]
+# Explicit allowlist: never package runtime databases, local credentials or caches.
+include = [
+    "/src", "/docs", "/tests", "/tests_postgres", "/scripts",
+    "/LICENSE",
+    "/pyproject.toml", "/uv.lock", "/justfile",
+    "/examples/fastapi_server/app", "/examples/fastapi_server/alembic",
+    "/examples/fastapi_server/alembic.ini",
+    "/examples/fastapi_server/pyproject.toml",
+    "/examples/fastapi_server/uv.lock",
+]
+exclude = ["**/__pycache__/**", "**/*.pyc", "**/*.db", "**/.env", "**/.env.*"]
