@@ -306,3 +306,18 @@ that final test. The validation record reflects the final run.
 - All existing review text is preserved, with resolutions added for R1–R5 and the drift note. No application database was changed and no live messages were sent.
 
 These fixes continue on the existing issue #1 branch and PR #2.
+
+## Maintenance notes (2026-11-02)
+
+Checked against d5ff25d. Every finding (1–26), every re-review remark (R1–R5)
+and the drift note is resolved, and none remains open. The two notes below are
+maintenance notes, not correctness issues; nothing needs to change now.
+
+- `src/notify_kit/notifier.py` is at the 400-line limit. Any change that adds to
+  it should also extract a focused piece into its own module.
+- The R4 relabelling, which turns an inconclusive check of an accepted delivery
+  into `DELIVERY_CONFIRMATION_UNAVAILABLE`, sits in `Worker.run_once()`. It could
+  move into a transition helper so `run_once()` stays focused on orchestration.
+  Moving it into `_transition()` itself would require that method to return the
+  adjusted `ProviderResult` along with the state, next attempt time and terminal
+  flag.
