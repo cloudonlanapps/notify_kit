@@ -17,27 +17,25 @@ push, open a PR or merge unless the user authorizes that action.
 Edits to CLAUDE.md, to docs/CONTRIBUTING.md, or to other files under docs/ do
 not require an issue. Commit them directly to main. If you are on a feature
 branch, switch to main, commit, push, then cherry-pick into the feature branch.
-This follows the same rule in club_server's CLAUDE.md and is also recorded in
-docs/CONTRIBUTING.md. Pushing still needs the user's confirmation.
+This rule is also recorded in docs/CONTRIBUTING.md. Pushing still needs the
+user's confirmation.
 
-## Applying the imported conventions
+## Repository workflow
 
-docs/CONTRIBUTING.md was copied from club_server, with the process-file
-exception added. This repository is
-cloudonlanapps/notify_kit, a standalone Python package, not that server.
+This repository is cloudonlanapps/notify_kit, a standalone Python package. This
+file, CLAUDE.md, is the project entry point.
 
-- Use this repository's issues and remotes. The current implementation concerns
-  issue #1. Do not create or modify club_server issues for notify_kit work.
-- Work on an issue-linked feature branch based on main. Use the Codex branch
-  prefix with an issue number, for example codex/1-notifier-provider-foundation.
-- Server deployment settings, coordinated club_* versioning, HTTP endpoints,
-  server module snapshots and server release promotion apply only to that server;
-  do not introduce them here without a corresponding notify_kit requirement.
-- HTTP/role-specific testing rules apply only if such APIs are introduced. Test
-  this package through its public Python API, with isolated databases and no
+- Use this repository's issues and remotes.
+- Work on an issue-linked feature branch based on main, named
+  <type>/<issue>-<slug>. An agent may use its own prefix in place of <type>, for
+  example codex/1-notifier-provider-foundation.
+- When the user authorizes a merge, ask whether to squash or rebase. Never use
+  --merge and never delete the remote feature branch.
+- The package reads no configuration from the environment and has no HTTP API of
+  its own; the caller supplies configuration. Do not add environment settings,
+  HTTP endpoints or deployment concerns without a notify_kit requirement.
+- Test this package through its public Python API, with isolated databases and no
   network dependency. Do not invent test commands or fixtures that do not exist.
-- Use notify_kit imports and package paths wherever the imported documents say
-  club_server. This file, CLAUDE.md, is the project entry point.
 
 ## Code organization
 

@@ -57,8 +57,8 @@ before new sends. Removal confirms deletion of that internal registration.
 
 ## Brevo and Resend
 
-These adapters follow club_server/mailer/providers.py's inline-email approach:
-prepare subject and body first, then submit them to the vendor's send endpoint.
+These adapters send inline email: they prepare the subject and body first, then
+submit them to the vendor's send endpoint.
 They use httpx.AsyncClient instead of the synchronous SDKs. Authentication belongs
 to each provider instance; no process-global SDK API key is modified. Each attempt
 closes its HTTP client, and credentials never enter prepared payloads or jobs.

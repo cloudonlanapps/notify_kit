@@ -1,7 +1,7 @@
 # Database design
 
-notify_kit follows club_server's SQLAlchemy 2.x async design while remaining a
-standalone package with explicit caller configuration.
+notify_kit uses SQLAlchemy 2.x with async sessions, and takes all of its
+configuration explicitly from the caller.
 
 ## Configuration
 
@@ -35,7 +35,7 @@ session factory; the caller closes it after all worker activity stops.
   ORM entities bound to an active session.
 - storage/ owns database queries, transaction boundaries and conversion to value
   objects. Each operation receives a fresh AsyncSession; sessions are not shared
-  between concurrent jobs. expire_on_commit=False follows club_server.
+  between concurrent jobs. Sessions use expire_on_commit=False.
 - Provider network calls run outside database transactions. Claims are committed
   before sending. Accepted/unknown outcomes are not blindly retried.
 - SQLite write operations acquire BEGIN IMMEDIATE before reading state;
@@ -60,18 +60,17 @@ creating or upgrading tables. Version mismatch stops startup. Packaged revisions
 must be upgraded before servers/workers start. Historical raw-SQL/create_all
 schemas are not automatically adopted or stamped; data conversion is explicit.
 
-## Other observed club_server conventions
+## Design boundaries
 
 - Services encapsulate business operations; HTTP routers and Pydantic response
   schemas belong to the application. This kit does not acquire a FastAPI dependency.
 - Domain exceptions are distinct from HTTP responses. ProviderError remains the
   current safe plugin error; a broader storage exception taxonomy is future work.
-- club_server separates ORM entities from public schemas. The kit retains typed
-  dataclasses for its Python API; a Pydantic dependency is not required for ORM use.
-- club_server uses UTC integer timestamps in many models. The current kit API
-  retains its existing Unix-seconds timestamps rather than silently changing units.
-- Alembic migrations and async engine disposal are part of the server's lifecycle.
-  The kit exposes disposal and packaged migrations; the application owns deployment execution.
+- ORM entities are separate from the public API. The kit exposes typed
+  dataclasses; a Pydantic dependency is not required.
+- Timestamps are Unix seconds (floats) throughout the public API.
+- The kit exposes engine disposal and packaged migrations; the application
+  decides when to run migrations and owns deployment.
 
 The offline test suite uses isolated migrated SQLite databases. Separate PostgreSQL
 integration tests create disposable databases and cover schema parity, idempotency
