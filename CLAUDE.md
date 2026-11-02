@@ -12,6 +12,15 @@ Explicit user instructions take precedence over these repository conventions.
 Respect requests for review-only work, no tests, or no commits. Do not commit,
 push, open a PR or merge unless the user authorizes that action.
 
+## Exception for process files
+
+Edits to CLAUDE.md, to docs/CONTRIBUTING.md, or to other files under docs/ do
+not require an issue. Commit them directly to main. If you are on a feature
+branch, switch to main, commit, push, then cherry-pick into the feature branch.
+This follows the same rule in club_server's CLAUDE.md and overrides the
+"never push directly to main" line in docs/CONTRIBUTING.md for these files only.
+Pushing still needs the user's confirmation.
+
 ## Applying the imported conventions
 
 docs/CONTRIBUTING.md was copied unchanged from club_server. This repository is
@@ -28,7 +37,7 @@ cloudonlanapps/notify_kit, a standalone Python package, not that server.
   this package through its public Python API, with isolated databases and no
   network dependency. Do not invent test commands or fixtures that do not exist.
 - Use notify_kit imports and package paths wherever the imported documents say
-  club_server. CLAUDE.md is not required; this file is the project entry point.
+  club_server. This file, CLAUDE.md, is the project entry point.
 
 ## Code organization
 
@@ -57,6 +66,8 @@ cloudonlanapps/notify_kit, a standalone Python package, not that server.
 ## Documentation location
 
 Keep every repository document under docs/, including usage, contribution,
-validation and example guides. Root AGENTS.md is a discovery symlink to this file;
-do not create duplicate instruction content outside docs/. Package README metadata
-must reference docs/README.md. Keep relative links current when moving documents.
+validation and example guides. The one exception is this instruction file,
+CLAUDE.md, which stays in the repository root. Root AGENTS.md is a discovery
+symlink to it; do not create duplicate instruction content elsewhere. Package
+README metadata must reference docs/README.md. Keep relative links current when
+moving documents.
